@@ -17,6 +17,7 @@ setup(
         "pandas",
         "pyarrow",
         "requests",
+        "sqlparse"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
