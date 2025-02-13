@@ -1,0 +1,7 @@
+requests
+pytest
+sqlparse
+pandas
+pyarrow
+sqlalchemy
+build
