@@ -20,46 +20,44 @@ pip install git+https://github.com/AnthonyTlei/graphsql.git
 
 ## 🔧 Usage
 
+### Uuse with python and sqlalchemy
+
+```python
+import graphsql.dialect.dialect
+from sqlalchemy import create_engine, text
+from sqlalchemy.dialects import registry
+from sqlalchemy.engine.url import make_url
+
+def test_graphsql_dialect():
+    assert "graphsql" in registry.load("graphsql").name, "GraphSQL dialect is not registered!"
+    print("✅ GraphSQL dialect is registered!")
+    url = make_url("graphsql://graphql.anilist.co")
+    engine = create_engine(url)
+    assert engine.dialect.name == "graphsql", "Engine did not use the GraphSQL dialect!"
+    print("✅ Engine created successfully with GraphSQL dialect!")
+    with engine.connect() as conn:
+        sql_query = text("SELECT media.id, media.title.english FROM Page")
+        result = conn.execute(sql_query)
+        rows = result.fetchall()
+        print("✅ Query executed successfully!")
+        print("Results:", rows)
+
+if __name__ == "__main__":
+    test_graphsql_dialect()
+```
+
 ### 🌐 Handling HTTP Endpoints & Authentication
 
 If your GraphQL endpoint uses HTTP instead of HTTPS, you need to set `is_http=1` when initializing the connection:
 
 ```python
-conn = GraphSQLConnection(endpoint="http://your-graphql-endpoint.com?is_http=1")
+url = make_url(endpoint="graphsql://your-graphql-endpoint.com?is_http=1")
 ```
 
 To pass authentication arguments, use the `auth` parameter:
 
 ```python
-conn = GraphSQLConnection(endpoint="https://your-graphql-endpoint.com?auth=<>"
-```
-
-### 1️⃣ Connect to a GraphQL Endpoint
-
-```python
-from graphsql.dbapi.connection import GraphSQLConnection
-
-conn = GraphSQLConnection(endpoint="https://your-graphql-endpoint.com")
-```
-
-### 2️⃣ Execute SQL Queries
-
-```python
-cursor = conn.cursor()
-cursor.execute("SELECT name, age FROM users WHERE age > 25")
-result = cursor.fetchall()
-print(result)
-```
-
-### 3️⃣ Use with SQLAlchemy
-
-```python
-from sqlalchemy import create_engine
-
-dialect = "graphsql://your-graphql-endpoint.com"
-engine = create_engine(dialect)
-result = engine.execute("SELECT id, title FROM posts")
-print(result.fetchall())
+url = make_url(endpoint="graphsql://your-graphql-endpoint.com?auth=<>")
 ```
 
 ## 🎯 Roadmap
