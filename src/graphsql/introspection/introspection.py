@@ -46,13 +46,11 @@ class GraphQLIntrospection:
         if "data" not in schema or "__schema" not in schema["data"]:
             raise ValueError("Invalid schema response from GraphQL endpoint.")
         
-        types = schema["data"]["__schema"]["types"]
-        
         with open(self.schema_path, "w") as file:
-            json.dump(types, file, indent=2)
+            json.dump(schema, file, indent=2)
         
         print(f"✅ GraphQL schema saved to {self.schema_path}")
-        return types
+        return schema
 
     def load_schema(self):
         """
