@@ -8,7 +8,7 @@ class DataFetch:
     """
     Fetches data from a GraphQL endpoint and saves the JSON response to a file.
     """
-    def __init__(self, endpoint_url, data_dir="./data", retries=3, timeout=10, auth_token=None, auth_type="Bearer"):
+    def __init__(self, endpoint_url, data_dir="./data", retries=3, timeout=10, auth_token=None):
         """
         Initialize DataFetch with endpoint details and configurations.
         :param endpoint_url: URL of the GraphQL endpoint.
@@ -16,15 +16,13 @@ class DataFetch:
         :param retries: Number of retries on failure.
         :param timeout: Timeout for each request.
         :param auth_token: Optional authentication token for the request.
-        :param auth_type: Authentication type ('Bearer' or 'Basic').
         """
         self.endpoint_url = endpoint_url
         self.data_dir = data_dir
         self.retries = retries
         self.timeout = timeout
         self.auth_token = auth_token
-        self.auth_type = auth_type
-        
+
         os.makedirs(self.data_dir, exist_ok=True)
 
     def _generate_filename(self, query):
@@ -48,10 +46,7 @@ class DataFetch:
         headers = {"Content-Type": "application/json"}
         
         if self.auth_token:
-            if self.auth_type == "Bearer":
-                headers["Authorization"] = f"Bearer {self.auth_token}"
-            elif self.auth_type == "Basic":
-                headers["Authorization"] = f"Basic {self.auth_token}"
+            headers["Authorization"] = f"{self.auth_token}"
         
         for attempt in range(1, self.retries + 1):
             try:

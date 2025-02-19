@@ -39,7 +39,7 @@ class GraphSQLCursor:
         graphql_query = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
 
         if self.headers and self.headers["Authorization"]:
-            json_file_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"], auth_type="Basic").fetch_data(graphql_query)
+            json_file_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(graphql_query)
         else :
             json_file_path = DataFetch(self.endpoint).fetch_data(graphql_query)
 
