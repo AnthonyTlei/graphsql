@@ -1,0 +1,5 @@
+sqlalchemy<2.0
+pandas
+pyarrow
+requests
+sqlparse

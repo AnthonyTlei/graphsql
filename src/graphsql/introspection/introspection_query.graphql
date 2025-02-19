@@ -1,0 +1,19 @@
+{
+  __schema {
+    types {
+      name
+      kind
+      fields {
+        name
+        type {
+          kind
+          name
+          ofType {
+            kind
+            name
+          }
+        }
+      }
+    }
+  }
+}

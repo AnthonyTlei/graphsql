@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import hashlib
+import importlib.resources as pkg_resources
 
 class GraphQLIntrospection:
     """
@@ -32,28 +33,13 @@ class GraphQLIntrospection:
         Fetches the GraphQL schema via introspection and saves it.
         :return: Parsed schema types.
         """
-        introspection_query = """
-        {  
-          __schema {  
-            types {  
-              name  
-              kind  
-              fields {  
-                name  
-                type {  
-                  kind  
-                  name  
-                  ofType {  
-                    kind  
-                    name  
-                  }  
-                }  
-              }  
-            }  
-          }  
-        }
-        """
-        response = requests.post(self.endpoint, json={"query": introspection_query})
+        
+        schema_file = pkg_resources.files("graphsql.introspection").joinpath("introspection_query.graphql")
+
+        with schema_file.open("r") as file:
+            introspection_query_str = file.read()
+          
+        response = requests.post(self.endpoint, json={"query": introspection_query_str})
         response.raise_for_status()
         schema = response.json()
 

@@ -12,6 +12,9 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
+    package_data={
+        "graphsql": ["introspection/*.graphql"]
+    },
     install_requires=[
         "sqlalchemy<2.0",
         "pandas",
