@@ -33,7 +33,8 @@ class GraphSQLCursor:
         if self._closed:
             raise Exception("Cursor is closed.")
         
-        endpoint_hash = hashlib.md5(self.endpoint.encode()).hexdigest()[:10]
+        cleaned_endpoint = self.endpoint.removeprefix("http://").removeprefix("https://")
+        endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
         graphql_query = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)

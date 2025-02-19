@@ -25,7 +25,8 @@ class GraphQLIntrospection:
         Generates a unique filename based on the endpoint URL.
         :return: Hashed filename for schema storage.
         """
-        endpoint_hash = hashlib.md5(self.endpoint.encode()).hexdigest()[:10]
+        clean_endpoint = self.endpoint.removeprefix("http://").removeprefix("https://")
+        endpoint_hash = hashlib.md5(clean_endpoint.encode()).hexdigest()[:10]
         return f"schema_{endpoint_hash}.json"
 
     def fetch_schema(self):

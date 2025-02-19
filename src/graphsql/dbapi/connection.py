@@ -28,7 +28,8 @@ class GraphSQLConnection:
         introspection = GraphQLIntrospection(endpoint)
         self.schema_path = introspection.load_schema()
 
-        endpoint_hash = hashlib.md5(self.endpoint.encode()).hexdigest()[:10]
+        cleaned_endpoint = self.endpoint.removeprefix("http://").removeprefix("https://")
+        endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
         if not os.path.exists(mappings_path) or not os.path.exists(relations_path):
@@ -66,5 +67,4 @@ def connect(endpoint: str, headers: dict = None):
     SQLAlchemy expects a DBAPI `connect()` function.
     This function returns a `GraphSQLConnection` instance.
     """
-    print("Connect Endpoint:", endpoint)
     return GraphSQLConnection(endpoint, headers)
