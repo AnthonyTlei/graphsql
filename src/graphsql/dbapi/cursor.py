@@ -51,7 +51,13 @@ class GraphSQLCursor:
     def _load_results(self, file_path):
         """Loads the tabular data from file into memory."""
         import pandas as pd
-
+        
+        if not file_path:
+            self._results = []
+            self._description = []
+            return
+    
+        
         if self.output_format == "csv":
             df = pd.read_csv(file_path)
         elif self.output_format == "parquet":

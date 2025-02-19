@@ -65,6 +65,10 @@ class JSONToTabular:
         :param json_path: Path to the JSON file containing the GraphQL response.
         :return: Path of the saved tabular file.
         """
+        
+        if not json_path:
+            return ""
+        
         with open(json_path, "r") as file:
             data = json.load(file)
 

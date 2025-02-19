@@ -377,7 +377,10 @@ class SQLParser:
 
     def _resolve_graphql_structure(self, graphql_table, graphql_fields, conditions_str):
         """Build the final GraphQL query string."""
+        
         def build_graphql_fields(fields):
+            if not fields:
+                return ""
             if isinstance(fields, dict):
                 parts = []
                 for key, val in fields.items():
@@ -385,10 +388,16 @@ class SQLParser:
                         parts.append(key)
                     else:
                         parts.append(f"{key} {build_graphql_fields(val)}")
-                return "{ " + " ".join(parts) + " }"
+                return "{ " + " ".join(parts) + " }" if parts else ""
             return ""
 
-        return f'query {graphql_table} {{ {graphql_table}{conditions_str} {build_graphql_fields(graphql_fields)} }}'.strip()
+        graphql_fields_str = build_graphql_fields(graphql_fields)
+        
+        if not graphql_fields_str:
+            # If reached it means the table has no scalar fields (with *) or something went wrong
+            return ""
+
+        return f'query {graphql_table} {{ {graphql_table}{conditions_str} {graphql_fields_str} }}'.strip()
 
     def _resolve_table_mapping(self, table):
         """Resolves table mapping from SQL name to GraphQL field/type name."""

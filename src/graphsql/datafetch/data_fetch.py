@@ -47,6 +47,9 @@ class DataFetch:
         
         if self.auth_token:
             headers["Authorization"] = f"{self.auth_token}"
+            
+        if not query:
+            return ""
         
         for attempt in range(1, self.retries + 1):
             try:
