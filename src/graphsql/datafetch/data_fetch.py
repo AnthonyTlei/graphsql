@@ -8,18 +8,22 @@ class DataFetch:
     """
     Fetches data from a GraphQL endpoint and saves the JSON response to a file.
     """
-    def __init__(self, endpoint_url, data_dir="./data", retries=3, timeout=10):
+    def __init__(self, endpoint_url, data_dir="./data", retries=3, timeout=10, auth_token=None, auth_type="Bearer"):
         """
         Initialize DataFetch with endpoint details and configurations.
         :param endpoint_url: URL of the GraphQL endpoint.
         :param data_dir: Directory where JSON responses are stored.
         :param retries: Number of retries on failure.
         :param timeout: Timeout for each request.
+        :param auth_token: Optional authentication token for the request.
+        :param auth_type: Authentication type ('Bearer' or 'Basic').
         """
         self.endpoint_url = endpoint_url
         self.data_dir = data_dir
         self.retries = retries
         self.timeout = timeout
+        self.auth_token = auth_token
+        self.auth_type = auth_type
         
         os.makedirs(self.data_dir, exist_ok=True)
 
@@ -42,6 +46,12 @@ class DataFetch:
         """
         payload = {"query": query, "variables": variables or {}}
         headers = {"Content-Type": "application/json"}
+        
+        if self.auth_token:
+            if self.auth_type == "Bearer":
+                headers["Authorization"] = f"Bearer {self.auth_token}"
+            elif self.auth_type == "Basic":
+                headers["Authorization"] = f"Basic {self.auth_token}"
         
         for attempt in range(1, self.retries + 1):
             try:
@@ -73,20 +83,3 @@ class DataFetch:
                 time.sleep(2 ** attempt)
 
         return None
-
-if __name__ == "__main__":
-    fetcher = DataFetch("https://spacex-production.up.railway.app/")
-    sample_query = """
-    query GetRockets {
-      rockets {
-            id
-            name
-            diameter {
-            feet
-            meters
-            }
-        }
-    }
-    """
-    file_path = fetcher.fetch_data(sample_query)
-    print(f"Data saved at: {file_path}")
