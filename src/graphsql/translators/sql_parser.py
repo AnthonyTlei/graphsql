@@ -1,6 +1,8 @@
 import json
-import sqlparse
 import re
+import sqlparse
+from sqlparse.sql import IdentifierList, Identifier, Parenthesis, Token
+from sqlparse.tokens import DML, Keyword, Wildcard
 
 class SQLParser:
     def __init__(self, mappings_path="schemas/mappings.json", relations_path="schemas/relations.json"):
@@ -14,11 +16,261 @@ class SQLParser:
             return json.load(file)
 
     def parse_sql(self, sql_query):
-        """Parses SQL query into structured components."""
-        parsed = sqlparse.parse(sql_query)[0]
-        tokens = [token for token in parsed.tokens if not token.is_whitespace]
+        """
+        Parses a single SQL statement into structured components,
+        including potential subqueries.
+        """
+        # Parse the entire statement (Only 1 statement is supported at a time for now)
+        statement = sqlparse.parse(sql_query)[0]
+        print("Parsed Statement: ", statement)
 
+        # Build result structure
         sql_structure = {
+            "operation": None,
+            "fields": [],
+            "table": None,
+            "alias": None,
+            "subquery": None,
+            "conditions": [],
+            "order_by": None,
+            "limit": None
+        }
+
+        # 1) Identify operation (e.g. SELECT, UPDATE, etc.)
+        statement_type = statement.get_type()
+        if statement_type.upper() == "SELECT":
+            sql_structure["operation"] = "SELECT"
+        else:
+            # Or check tokens[0].ttype is DML
+            first_token = statement.tokens[0] if statement.tokens else None
+            if first_token and first_token.ttype is DML:
+                sql_structure["operation"] = first_token.value.upper()
+
+        # 2) Extract the SELECT-ed fields
+        self._extract_fields(statement, sql_structure)
+
+        # 3) Extract the FROM part (table or subquery)
+        self._extract_from_part(statement, sql_structure)
+
+        # 4) Extract WHERE, ORDER BY, LIMIT
+        self._extract_where_order_limit(statement, sql_structure)
+
+        print("Parsed SQL Structure: ", sql_structure)
+        return sql_structure
+
+    def _extract_fields(self, statement, sql_structure):
+        """
+        Look for tokens between SELECT and FROM (or next Keyword) that
+        indicate the fields being selected. We'll also handle basic aliasing,
+        e.g. "field AS alias".
+        """
+        select_seen = False
+
+        for token in statement.tokens:
+            # Check if the token is the "SELECT" keyword
+            if token.ttype is DML and token.value.upper() == "SELECT":
+                select_seen = True
+                continue
+
+            if select_seen:
+                # If we hit FROM or another top-level keyword, we stop gathering fields
+                if (token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT"]) \
+                   or token.is_group and isinstance(token, Parenthesis):
+                    break
+                # If it's a comma-separated list of fields
+                if isinstance(token, IdentifierList):
+                    for identifier in token.get_identifiers():
+                        self._handle_single_field(identifier.value.strip(), sql_structure)
+                # If it's a single field (Identifier)
+                elif isinstance(token, Identifier):
+                    self._handle_single_field(token.value.strip(), sql_structure)
+                # If it's a wildcard
+                elif token.ttype is Wildcard:
+                    sql_structure["fields"].append("*")
+                else:
+                    # Possibly a text token that includes multiple fields
+                    raw_val = token.value.strip()
+                    if raw_val:
+                        for f in raw_val.split(","):
+                            self._handle_single_field(f.strip(), sql_structure)
+
+    def _handle_single_field(self, field_string, sql_structure):
+        """
+        Helper to handle a single field string, possibly containing
+        alias syntax like:  "mytable.id AS myalias" or quotes.
+        """
+        # Example: '"Page.media.id" AS "Page.media.id"'
+        # We want to store just 'Page.media.id' in sql_structure["fields"].
+        # We'll do a naive check for " AS ".
+        upper_field = field_string.upper()
+        if " AS " in upper_field:
+            left, right = re.split(r"\s+AS\s+", field_string, flags=re.IGNORECASE)
+            # left is the real field, right is the alias - aliases are ignored
+            field_clean = left.strip('"').strip()
+            sql_structure["fields"].append(field_clean)
+        else:
+            # No explicit "AS"
+            # Possibly "Page.media.id"
+            field_clean = field_string.strip('"').strip()
+            sql_structure["fields"].append(field_clean)
+
+    def _extract_from_part(self, statement, sql_structure):
+        """
+        Detect the FROM clause. If it's just a table, store table name.
+        If it's a subquery (Parenthesis), parse subquery.
+        Also detect an optional alias after the table or subquery.
+        """
+        from_seen = False
+        tokens = statement.tokens
+
+        for i, token in enumerate(tokens):
+            # If we see "FROM", the next token(s) describe the table or subquery
+            if token.ttype is Keyword and token.value.upper() == "FROM":
+                from_seen = True
+                continue
+
+            if from_seen:
+                # 1) If it's a Parenthesis => subquery
+                if isinstance(token, Parenthesis):
+                    inner_sql = token.value.strip("()")
+                    sql_structure["subquery"] = self._parse_subquery(inner_sql)
+                    self._maybe_extract_alias(tokens, i+1, sql_structure)
+                    break
+
+                # 2) If it's an Identifier
+                elif isinstance(token, Identifier):
+                    val = token.value.strip()
+                    if "(" in val and ")" in val:
+                        self._handle_subquery_in_identifier(val, sql_structure)
+                    else:
+                        sql_structure["table"] = token.get_real_name()
+                        if token.get_alias():
+                            sql_structure["alias"] = token.get_alias()
+                    break
+
+                # 3) If it's an IdentifierList => multiple tables
+                elif isinstance(token, IdentifierList):
+                    first_id = list(token.get_identifiers())[0]
+                    sql_structure["table"] = first_id.get_real_name()
+                    if first_id.get_alias():
+                        sql_structure["alias"] = first_id.get_alias()
+                    break
+
+                # 4) If it's a token with ttype=None, sometimes it's just the bare table name
+                elif token.ttype is None:
+                    raw_val = token.value.strip()
+                    # Could contain subquery too if it has parentheses
+                    if "(" in raw_val and ")" in raw_val:
+                        self._handle_subquery_in_identifier(raw_val, sql_structure)
+                    else:
+                        sql_structure["table"] = raw_val
+                    self._maybe_extract_alias(tokens, i+1, sql_structure)
+                    break
+
+                # If none of these matched, we keep going or break
+
+    def _handle_subquery_in_identifier(self, identifier_value, sql_structure):
+        """
+        Some queries come in as a single Identifier with parentheses, e.g.:
+          "(SELECT media.id FROM Page ) AS virtual_table"
+        We'll manually extract the subquery portion and alias.
+        """
+        # A naive split by ')' to separate subquery from alias
+        match = re.match(r"\((.*?)\)\s*(?:AS\s+)?(\S+)?", identifier_value, flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            subquery_sql = match.group(1)
+            possible_alias = match.group(2)
+
+            subquery_sql = subquery_sql.strip()
+            if subquery_sql:
+                sql_structure["subquery"] = self._parse_subquery(subquery_sql)
+
+            if possible_alias:
+                possible_alias = possible_alias.strip(' "')
+                sql_structure["alias"] = possible_alias
+                sql_structure["table"] = possible_alias
+
+        else:
+            # If we can't parse it, fallback to treating as table?
+            # This is a fallback; 
+            sql_structure["table"] = identifier_value.strip()
+
+    def _maybe_extract_alias(self, tokens, start_index, sql_structure):
+        """
+        If we have something like 'FROM (...) AS alias' or 'FROM (...) alias',
+        parse out the alias.
+        """
+        if start_index < len(tokens):
+            next_token = tokens[start_index]
+            if next_token.value.upper() == "AS":
+                alias_idx = start_index + 1
+                if alias_idx < len(tokens):
+                    alias_token = tokens[alias_idx]
+                    sql_structure["alias"] = alias_token.value.strip()
+                    if not sql_structure["table"]:
+                        sql_structure["table"] = alias_token.get_real_name()
+            else:
+                if next_token.ttype is None or isinstance(next_token, Identifier):
+                    alias_str = next_token.value.strip()
+                    sql_structure["alias"] = alias_str
+                    if not sql_structure["table"]:
+                        sql_structure["table"] = next_token.get_real_name()
+
+    def _extract_where_order_limit(self, statement, sql_structure):
+        """
+        Look for WHERE, ORDER BY, and LIMIT tokens in the statement.
+        We'll do a simpler version that basically checks each token's value.
+        """
+        tokens = statement.tokens
+        i = 0
+        while i < len(tokens):
+            t = tokens[i]
+            upper_val = t.value.upper()
+
+            # WHERE
+            if t.ttype is Keyword and upper_val == "WHERE":
+                if (i+1) < len(tokens):
+                    where_token = tokens[i+1]
+                    where_clause = where_token.value.strip()
+                    conditions = where_clause.split("AND")
+                    for cond in conditions:
+                        match = re.match(r"(\w+)\s*=\s*['\"]?([^'\"]+)['\"]?", cond.strip())
+                        if match:
+                            sql_structure["conditions"].append({match.group(1): match.group(2)})
+                i += 2
+                continue
+
+            # ORDER BY
+            if t.ttype is Keyword and upper_val == "ORDER BY":
+                if (i+1) < len(tokens):
+                    order_token = tokens[i+1]
+                    parts = order_token.value.split()
+                    if len(parts) == 2:
+                        field, direction = parts
+                    else:
+                        field, direction = parts[0], "ASC"
+                    sql_structure["order_by"] = f"{field}: {direction.upper()}"
+                i += 2
+                continue
+
+            # LIMIT
+            if t.ttype is Keyword and upper_val == "LIMIT":
+                if (i+1) < len(tokens):
+                    limit_token = tokens[i+1]
+                    sql_structure["limit"] = limit_token.value.strip()
+                i += 2
+                continue
+
+            i += 1
+
+    def _parse_subquery(self, subquery_string):
+        """
+        Parses the contents of a subquery 'SELECT ... FROM ...' into a structure.
+        We do a simplified parse. You can expand it to handle WHERE, etc.
+        """
+        sub_statement = sqlparse.parse(subquery_string)[0]
+
+        sub_structure = {
             "operation": None,
             "fields": [],
             "table": None,
@@ -26,87 +278,75 @@ class SQLParser:
             "order_by": None,
             "limit": None
         }
-        
-        if tokens[0].ttype is sqlparse.tokens.DML:
-            sql_structure["operation"] = tokens[0].value.upper()
 
-        from_seen = False
+        # Identify operation
+        if sub_statement.get_type().upper() == "SELECT":
+            sub_structure["operation"] = "SELECT"
+        else:
+            # fallback
+            first_token = sub_statement.tokens[0] if sub_statement.tokens else None
+            if first_token and first_token.ttype is DML:
+                sub_structure["operation"] = first_token.value.upper()
+
+        # Extract fields (everything between SELECT and FROM)
         select_seen = False
-        order_by_seen = False
-        limit_seen = False
-
-        for token in tokens:
-            value = token.value.upper()
-
-            if select_seen and value != "FROM" and not from_seen and "WHERE" not in value:
-                if token.ttype is sqlparse.tokens.Wildcard:
-                    sql_structure["fields"].append("*")
-                else:
-                    field_names = [f.strip() for f in token.value.split(",")]
-                    sql_structure["fields"].extend(field_names)
-
-            if value == "SELECT":
+        for token in sub_statement.tokens:
+            if token.ttype is DML and token.value.upper() == "SELECT":
                 select_seen = True
+                continue
 
-            if from_seen and sql_structure["table"] is None and token.ttype is None:
-                sql_structure["table"] = token.get_real_name()
+            if select_seen:
+                if token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT"]:
+                    break
 
-            if value == "FROM":
+                if isinstance(token, IdentifierList):
+                    for ident in token.get_identifiers():
+                        sub_structure["fields"].append(ident.value.strip())
+                elif isinstance(token, Identifier):
+                    sub_structure["fields"].append(token.value.strip())
+                elif token.ttype is Wildcard:
+                    sub_structure["fields"].append("*")
+                else:
+                    raw_val = token.value.strip()
+                    if raw_val:
+                        for f in raw_val.split(","):
+                            f_clean = f.strip()
+                            if f_clean:
+                                sub_structure["fields"].append(f_clean)
+
+        # Extract table name after FROM
+        from_seen = False
+        tokens = sub_statement.tokens
+        for i, t in enumerate(tokens):
+            if t.ttype is Keyword and t.value.upper() == "FROM":
                 from_seen = True
+                continue
+            if from_seen:
+                if isinstance(t, Identifier):
+                    sub_structure["table"] = t.get_real_name()
+                    break
+                elif t.ttype is None:
+                    sub_structure["table"] = t.value.strip()
+                    break
 
-            if "WHERE" in value:
-                where_clause = token.value.replace("WHERE", "").strip()
-                conditions = where_clause.split("AND")
-                for condition in conditions:
-                    match = re.match(r"(\w+)\s*=\s*['\"]?(\w+)['\"]?", condition.strip())
-                    if match:
-                        sql_structure["conditions"].append({match.group(1): match.group(2)})
-
-            if order_by_seen:
-                sql_structure["order_by"] = f"{token.get_real_name()}: DESC"
-                order_by_seen = False
-
-            if value == "ORDER BY":
-                order_by_seen = True
-
-            if limit_seen:
-                sql_structure["limit"] = str(token).strip()
-                limit_seen = False
-
-            if value == "LIMIT":
-                limit_seen = True
-
-        return sql_structure
-
-    def _resolve_table_mapping(self, table):
-        """Resolves table mapping from SQL to GraphQL."""
-        if table == "virtual_table":
-            raise ValueError("Handling for virtual table is not supported yet")
-        if table in self.mappings:
-            return table, table
-        if "Query" in self.relations:
-            for relation in self.relations["Query"]:
-                if relation["field"] == table:
-                    return relation["field"], relation["target"]
-        for parent, relations in self.relations.items():
-            for relation in relations:
-                if relation["field"] == table:
-                    return relation["field"], relation["target"]
-        raise ValueError(f"Unknown table: {table}")
+        return sub_structure
 
     def _parse_fields_with_nesting(self, fields, table):
-        """Parses nested fields based on mappings."""
+        """Parses nested fields based on mappings (simple approach)."""
         parsed_fields = {}
         
+        if not table:
+            return parsed_fields
+
         if "*" in fields:
-            for field, field_type in self.mappings[table].items():
-                parsed_fields[field] = True
+            if table in self.mappings:
+                for field, _type in self.mappings[table].items():
+                    parsed_fields[field] = True
             return parsed_fields
         
         for field in fields:
             parts = field.split(".")
             parent = parts[0]
-            
             if len(parts) == 1:
                 parsed_fields[parent] = True
             else:
@@ -119,32 +359,95 @@ class SQLParser:
         return parsed_fields
 
     def _generate_conditions(self, conditions, singular_table):
-        """Generates GraphQL conditions."""
+        """Generates GraphQL conditions, e.g. (id: 123, name: "x")."""
+        if not singular_table or singular_table not in self.mappings:
+            return ""
         graphql_conditions = []
         for condition in conditions:
             for key, value in condition.items():
                 if key in self.mappings[singular_table]:
-                    formatted_value = f'"{value}"' if not value.isdigit() else value
-                    graphql_conditions.append(f"{key}: {formatted_value}")
-        return f'({", ".join(graphql_conditions)})' if graphql_conditions else ""
+                    if value.isdigit():
+                        graphql_conditions.append(f"{key}: {value}")
+                    else:
+                        graphql_conditions.append(f'{key}: "{value}"')
+        if graphql_conditions:
+            return "(" + ", ".join(graphql_conditions) + ")"
+        else:
+            return ""
 
     def _resolve_graphql_structure(self, graphql_table, graphql_fields, conditions_str):
-        """Builds the GraphQL query structure dynamically."""
+        """Build the final GraphQL query string."""
         def build_graphql_fields(fields):
             if isinstance(fields, dict):
-                return "{ " + " ".join(f"{key} {build_graphql_fields(value)}" for key, value in fields.items()) + " }"
+                parts = []
+                for key, val in fields.items():
+                    if val is True:
+                        parts.append(key)
+                    else:
+                        parts.append(f"{key} {build_graphql_fields(val)}")
+                return "{ " + " ".join(parts) + " }"
             return ""
+
         return f'query {graphql_table} {{ {graphql_table}{conditions_str} {build_graphql_fields(graphql_fields)} }}'.strip()
 
+    def _resolve_table_mapping(self, table):
+        """Resolves table mapping from SQL name to GraphQL field/type name."""
+        print("Resolving table: ", table)
+        if not table:
+            return "Unknown", "Unknown"
+
+        # virtual_table shouldn't be reached as we handle subqueries in the parsing, so this is a fallback if parsing failed
+        if table == "virtual_table":
+            raise ValueError("Something went wrong with parsing virtual_table")
+
+        # Normal logic
+        if table in self.mappings:
+            return table, table
+
+        # Check "Query" in relations
+        if "Query" in self.relations:
+            for relation in self.relations["Query"]:
+                if relation["field"] == table:
+                    return relation["field"], relation["target"]
+
+        # Or check other parents
+        for parent, rels in self.relations.items():
+            for r in rels:
+                if r["field"] == table:
+                    return r["field"], r["target"]
+
+        # If we get here, table not found
+        raise ValueError(f"Unknown table: {table}")
+
     def convert_to_graphql(self, sql_query):
-        """Converts SQL query to GraphQL query dynamically with nesting support."""
+        """
+        Main method: parse the SQL, then convert to GraphQL.
+        If the parsed structure has a subquery, we'll use the subquery's
+        table/fields as the real data source.
+        """
+        print("Raw SQL Query: ", sql_query)
         sql_data = self.parse_sql(sql_query)
-        table = sql_data["table"]
-        fields = sql_data["fields"]
-        conditions = sql_data["conditions"]
+
+        # If there's a subquery, override table/fields with subquery data
+        if sql_data["subquery"]:
+            real_data = sql_data["subquery"]
+            table = real_data["table"]
+            fields = real_data["fields"]
+            conditions = real_data["conditions"]
+            limit = sql_data["limit"] or real_data["limit"]
+        else:
+            table = sql_data["table"]
+            fields = sql_data["fields"]
+            conditions = sql_data["conditions"]
+            limit = sql_data["limit"]
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
         graphql_fields = self._parse_fields_with_nesting(fields, singular_table)
         conditions_str = self._generate_conditions(conditions, singular_table)
 
-        return self._resolve_graphql_structure(graphql_table, graphql_fields, conditions_str)
+        graphql_query = self._resolve_graphql_structure(
+            graphql_table, graphql_fields, conditions_str
+        )
+
+        print("GraphQL Query:", graphql_query)
+        return graphql_query

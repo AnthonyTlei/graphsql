@@ -4,5 +4,6 @@ debug
 data
 dist
 schemas
+todo
 *.egg-info/
 *__pycache__
