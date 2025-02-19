@@ -20,8 +20,6 @@ class JSONToTabular:
         self.output_dir = os.path.join(output_dir, "tabular")
         os.makedirs(self.output_dir, exist_ok=True)
         
-        print("USING DEPTH: ", self.depth_cutoff)
-
     def flatten_json(self, obj, parent_key="", depth=0, depth_cutoff=2):
         """
         Flatten JSON into a list of dict rows. 
