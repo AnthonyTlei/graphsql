@@ -80,6 +80,8 @@ class SQLParser:
 
     def _resolve_table_mapping(self, table):
         """Resolves table mapping from SQL to GraphQL."""
+        if table == "virtual_table":
+            raise ValueError("Handling for virtual table is not supported yet")
         if table in self.mappings:
             return table, table
         if "Query" in self.relations:
