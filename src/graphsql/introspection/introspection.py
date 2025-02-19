@@ -4,6 +4,7 @@ import os
 import hashlib
 import importlib.resources as pkg_resources
 
+from urllib.parse import urlparse
 class GraphQLIntrospection:
     """
     Handles fetching and caching of GraphQL schemas via introspection.
@@ -25,8 +26,12 @@ class GraphQLIntrospection:
         Generates a unique filename based on the endpoint URL.
         :return: Hashed filename for schema storage.
         """
-        clean_endpoint = self.endpoint.removeprefix("http://").removeprefix("https://")
-        endpoint_hash = hashlib.md5(clean_endpoint.encode()).hexdigest()[:10]
+        parsed_url = urlparse(self.endpoint)
+        if parsed_url.scheme in ["http", "https", "graphsql"]:
+            self.cleaned_endpoint = parsed_url.netloc + parsed_url.path
+        else:
+            self.cleaned_endpoint = self.endpoint
+        endpoint_hash = hashlib.md5(self.cleaned_endpoint.encode()).hexdigest()[:10]
         return f"schema_{endpoint_hash}.json"
 
     def fetch_schema(self):

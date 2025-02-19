@@ -7,6 +7,8 @@ from graphsql.dbapi.connection import GraphSQLConnection
 from sqlalchemy.engine import reflection
 from sqlalchemy.types import Integer, String, Boolean, Float, JSON
 
+from urllib.parse import urlparse
+
 class GraphSQLDialect(DefaultDialect):
     """Custom SQLAlchemy dialect for GraphSQL."""
 
@@ -42,7 +44,11 @@ class GraphSQLDialect(DefaultDialect):
         For your case, you might load them from your introspection or from the `mappings.json`.
         """
         endpoint_url = str(connection.engine.url)
-        cleaned_endpoint = endpoint_url.removeprefix("graphsql://")
+        parsed_url = urlparse(endpoint_url)
+        if parsed_url.scheme in ["http", "https", "graphsql"]:
+            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+        else:
+            cleaned_endpoint = endpoint_url
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
@@ -100,7 +106,11 @@ class GraphSQLDialect(DefaultDialect):
     def get_columns(self, connection, table_name, schema=None, **kw):
         print("Getting Columns for:", table_name)
         endpoint_url = str(connection.engine.url)
-        cleaned_endpoint = endpoint_url.removeprefix("graphsql://")
+        parsed_url = urlparse(endpoint_url)
+        if parsed_url.scheme in ["http", "https", "graphsql"]:
+            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+        else:
+            cleaned_endpoint = endpoint_url
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"

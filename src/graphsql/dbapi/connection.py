@@ -6,6 +6,8 @@ from graphsql.introspection.schema_parser import SchemaParser
 
 from graphsql.dbapi.cursor import GraphSQLCursor 
 
+from urllib.parse import urlparse
+
 class Error(Exception):
     """Generic DBAPI Error."""
     pass
@@ -28,7 +30,12 @@ class GraphSQLConnection:
         introspection = GraphQLIntrospection(endpoint)
         self.schema_path = introspection.load_schema()
 
-        cleaned_endpoint = self.endpoint.removeprefix("http://").removeprefix("https://")
+        parsed_url = urlparse(self.endpoint)
+        if parsed_url.scheme in ["http", "https", "graphsql"]:
+            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+        else:
+            cleaned_endpoint = self.endpoint
+        
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"

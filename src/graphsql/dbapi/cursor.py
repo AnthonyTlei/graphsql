@@ -3,6 +3,7 @@ from graphsql.datafetch.data_fetch import DataFetch
 from graphsql.translators.json_to_tabular import JSONToTabular
 
 import hashlib
+from urllib.parse import urlparse
 
 class GraphSQLCursor:
     """DBAPI-compliant cursor for executing SQL queries via GraphQL."""
@@ -33,7 +34,11 @@ class GraphSQLCursor:
         if self._closed:
             raise Exception("Cursor is closed.")
         
-        cleaned_endpoint = self.endpoint.removeprefix("http://").removeprefix("https://")
+        parsed_url = urlparse(self.endpoint)
+        if parsed_url.scheme in ["http", "https", "graphsql"]:
+            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+        else:
+            cleaned_endpoint = self.endpoint
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
