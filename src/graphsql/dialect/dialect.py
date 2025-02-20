@@ -1,13 +1,18 @@
 import hashlib
 import json
-from sqlalchemy.engine.default import DefaultDialect
-from sqlalchemy.dialects import registry
+from urllib.parse import urlparse
+
 from graphsql.dbapi.connection import GraphSQLConnection
 
+from sqlalchemy.engine.default import DefaultDialect
+from sqlalchemy.dialects import registry
 from sqlalchemy.engine import reflection
-from sqlalchemy.types import Integer, String, Boolean, Float, JSON
+from sqlalchemy.types import Integer, Float, Boolean, String, JSON
+try:
+    from sqlalchemy.dialects.postgresql import ARRAY  # PostgreSQL only
+except ImportError:
+    ARRAY = None
 
-from urllib.parse import urlparse
 
 class GraphSQLDialect(DefaultDialect):
     """Custom SQLAlchemy dialect for GraphSQL."""
@@ -112,6 +117,7 @@ class GraphSQLDialect(DefaultDialect):
     @reflection.cache
     def get_columns(self, connection, table_name, schema=None, **kw):
         print("Getting Columns for:", table_name)
+
         endpoint_url = str(connection.engine.url)
         parsed_url = urlparse(endpoint_url)
         if parsed_url.scheme in ["http", "https", "graphsql"]:
@@ -125,13 +131,21 @@ class GraphSQLDialect(DefaultDialect):
         mappings = self._load_json(mappings_path)
         relations = self._load_json(relations_path)
 
-        table_mappings = mappings.get(table_name, {})
-        table_relations = relations.get(table_name, [])
-
         columns = []
 
-        # A) Scalar fields
-        for col_name, col_gql_type in table_mappings.items():
+        query_relations = relations.get("Query", [])
+        target_type = None
+        for rel in query_relations:
+            if rel.get("field") == table_name:
+                target_type = rel.get("target")
+                break
+
+        if not target_type:
+            print(f"⚠️ Warning: No target type found for {table_name}. Returning empty column list.")
+            return []
+
+        scalar_fields = mappings.get(target_type, {})
+        for col_name, col_gql_type in scalar_fields.items():
             sa_type = self._map_graphql_to_sa_type(col_gql_type)
             columns.append({
                 "name": col_name,
@@ -140,27 +154,35 @@ class GraphSQLDialect(DefaultDialect):
                 "default": None,
             })
 
-        # B) Relationship fields
-        for rel in table_relations:
+        target_relations = relations.get(target_type, [])
+        for rel in target_relations:
             field_name = rel.get("field")
             relation_type = rel.get("relation")
-            if not field_name:
+            target_object = rel.get("target")
+
+            if not field_name or not target_object:
                 continue
 
-            # "one-to-many", "many-to-many", etc. as JSON
-            if relation_type in ["one-to-many", "many-to-many"]:
-                sa_type = JSON()
-            else:
-                sa_type = JSON()
+            if relation_type in ["many-to-one", "one-to-one"]:
+                sa_type = String()
+                field_name_display = f"{field_name} : {target_object}"
+            elif relation_type in ["one-to-many", "many-to-many"]:
+                if ARRAY:
+                    sa_type = ARRAY(String())
+                    field_name_display = f"{field_name} : [{target_object}]"
+                else:
+                    sa_type = JSON()
+                    field_name_display = f"{field_name} : [{target_object}]"
 
             columns.append({
-                "name": field_name,
+                "name": field_name_display,
                 "type": sa_type,
                 "nullable": True,
                 "default": None,
+                "graphql_object": target_object,
             })
 
-        print(f"Columns for {table_name}: {columns}")
+        print(f"✅ Columns for {table_name}: {columns}")
         return columns
 
     def _map_graphql_to_sa_type(self, gql_type):
