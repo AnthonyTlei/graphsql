@@ -54,8 +54,8 @@ class SQLParser:
         # 3) Extract the FROM part (table or subquery)
         self._extract_from_part(statement, sql_structure)
 
-        # 4) Extract WHERE, ORDER BY, LIMIT
-        self._extract_where_order_limit(statement, sql_structure)
+        # 4) Extract WHERE, ORDER BY, LIMIT, GROUP BY
+        self._extract_keywords(statement, sql_structure)
         
         # 5) Extract aggregations
         self._extract_aggregations(sql_structure)
@@ -79,7 +79,7 @@ class SQLParser:
 
             if select_seen:
                 # If we hit FROM or another top-level keyword, we stop gathering fields
-                if (token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT"]) \
+                if (token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT", "GROUP BY"]) \
                    or token.is_group and isinstance(token, Parenthesis):
                     break
                 
@@ -223,7 +223,7 @@ class SQLParser:
                     if not sql_structure["table"]:
                         sql_structure["table"] = next_token.get_real_name()
 
-    def _extract_where_order_limit(self, statement, sql_structure):
+    def _extract_keywords(self, statement, sql_structure):
         """
         Look for WHERE, ORDER BY, and LIMIT tokens in the statement.
         We'll do a simpler version that basically checks each token's value.
@@ -256,6 +256,18 @@ class SQLParser:
                 if j < len(tokens):
                     limit_token = tokens[j]
                     sql_structure["order_by"] = limit_token.value.strip()
+
+                i = j + 1
+                continue
+            
+            # GROUP BY
+            if t.ttype is Keyword and upper_val == "GROUP BY":
+                j = i + 1
+                while j < len(tokens) and tokens[j].ttype in Whitespace:
+                    j += 1
+                if j < len(tokens):
+                    limit_token = tokens[j]
+                    sql_structure["group_by"] = limit_token.value.strip()
 
                 i = j + 1
                 continue
@@ -523,15 +535,17 @@ class SQLParser:
             fields = real_data["fields"]
             conditions = real_data["conditions"]
             limit = sql_data["limit"] or real_data["limit"]
-            aggregations = sql_data["aggregations"]
-            order_by = sql_data["order_by"]
+            aggregations = real_data.get("aggregations", [])
+            order_by = real_data.get("order_by", None)
+            group_by = real_data.get("group_by", None)
         else:
             table = sql_data["table"]
             fields = sql_data["fields"]
             conditions = sql_data["conditions"]
             limit = sql_data["limit"]
-            aggregations = sql_data["aggregations"]
-            order_by = sql_data["order_by"]
+            aggregations = sql_data.get("aggregations", [])
+            order_by = sql_data.get("order_by", None)
+            group_by = sql_data.get("group_by", None)
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
         graphql_fields = self._parse_fields_with_nesting(fields, singular_table)
@@ -550,11 +564,27 @@ class SQLParser:
         
         order_by_column, order_by_direction = self._validate_order_by(sql_data)
         
+        group_by_agg = None 
+        if group_by:
+            for agg in aggregations:
+                agg_func = agg[0]
+                agg_field = agg[1]
+                if agg_func.upper() in AGGREGATION_FUNCTIONS and group_by == agg_field:
+                    group_by_agg = agg_func
+                    break
+
+            if not group_by_agg:
+                group_by = None
+                group_by_agg = None
+                    
+        
         data = {
             "queries": result_queries,
             "limit": limit,
             "order_by_col": order_by_column,
-            "order_by_dir": order_by_direction
+            "order_by_dir": order_by_direction,
+            "group_by": group_by,
+            "group_by_agg": group_by_agg
         }
         
         return data

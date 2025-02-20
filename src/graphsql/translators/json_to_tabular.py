@@ -122,13 +122,32 @@ class JSONToTabular:
             for agg_key, agg_value in aggregation_results.items():
                 df[agg_key] = agg_value
                 
+        print("DATAFRAME COLS: ", df.columns.tolist())
+        
+        # Group By
+        group_by = data.get("group_by", None)
+        group_by_agg = data.get("group_by_agg", "COUNT") 
+        if group_by and group_by in df.columns:
+            aggregation_mapping = {
+                "COUNT": "count",
+                "SUM": "sum",
+                "AVG": "mean",
+                "MIN": "min",
+                "MAX": "max"
+            }
+            agg_func = aggregation_mapping.get(group_by_agg, "count")
+            non_grouped_cols = [col for col in df.columns if col != group_by]
+            agg_dict = {col: agg_func for col in non_grouped_cols}
+            df = df.groupby(group_by, as_index=False).agg(agg_dict)
+                
+        # Order By
         order_by_col = data.get("order_by_col", None)
         order_by_dir = data.get("order_by_dir", None)
-        print("DATAFRAME COLS: ", df.columns.tolist())
         if order_by_col and order_by_col in df.columns.tolist():
             ascending = order_by_dir.upper() == "ASC"
             df = df.sort_values(by=order_by_col, ascending=ascending)
             
+        # Limit
         limit = data.get("limit")
         if limit:
             try:
