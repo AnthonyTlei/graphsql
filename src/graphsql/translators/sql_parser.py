@@ -1,9 +1,10 @@
 import json
 import re
 import sqlparse
-from sqlparse.sql import IdentifierList, Identifier, Parenthesis, Token
+from sqlparse.sql import IdentifierList, Identifier, Parenthesis, Token, Function
 from sqlparse.tokens import DML, Keyword, Wildcard
 
+AGGREGATION_FUNCTIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
 class SQLParser:
     def __init__(self, mappings_path="schemas/mappings.json", relations_path="schemas/relations.json"):
         """Initialize SQL to GraphQL converter with mappings & relations JSON files."""
@@ -69,7 +70,7 @@ class SQLParser:
         e.g. "field AS alias".
         """
         select_seen = False
-
+        
         for token in statement.tokens:
             # Check if the token is the "SELECT" keyword
             if token.ttype is DML and token.value.upper() == "SELECT":
@@ -81,6 +82,7 @@ class SQLParser:
                 if (token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT"]) \
                    or token.is_group and isinstance(token, Parenthesis):
                     break
+                
                 # If it's a comma-separated list of fields
                 if isinstance(token, IdentifierList):
                     for identifier in token.get_identifiers():
@@ -103,20 +105,21 @@ class SQLParser:
         Helper to handle a single field string, possibly containing
         alias syntax like:  "mytable.id AS myalias" or quotes.
         """
-        # Example: '"Page.media.id" AS "Page.media.id"'
-        # We want to store just 'Page.media.id' in sql_structure["fields"].
-        # We'll do a naive check for " AS ".
-        upper_field = field_string.upper()
-        if " AS " in upper_field:
-            left, right = re.split(r"\s+AS\s+", field_string, flags=re.IGNORECASE)
-            # left is the real field, right is the alias - aliases are ignored
-            field_clean = left.strip('"').strip()
-            sql_structure["fields"].append(field_clean)
+        aggregation_pattern = r'\b(' + '|'.join(AGGREGATION_FUNCTIONS) + r')\s*\(\s*([\w\d\.\*]+)\s*\)'
+        match = re.search(aggregation_pattern, field_string, re.IGNORECASE)
+        if match:
+            function_name = match.group(1)
+            field_inside_function = match.group(2)
+            sql_structure["aggregations"].append((function_name.upper(), field_inside_function))
         else:
-            # No explicit "AS"
-            # Possibly "Page.media.id"
-            field_clean = field_string.strip('"').strip()
-            sql_structure["fields"].append(field_clean)
+            upper_field = field_string.upper()
+            if " AS " in upper_field:
+                left, right = re.split(r"\s+AS\s+", field_string, flags=re.IGNORECASE)
+                field_clean = left.strip('"').strip()
+                sql_structure["fields"].append(field_clean)
+            else:
+                field_clean = field_string.strip('"').strip()
+                sql_structure["fields"].append(field_clean)
 
     def _extract_from_part(self, statement, sql_structure):
         """
@@ -381,7 +384,8 @@ class SQLParser:
         else:
             return ""
 
-    def _generate_aggregation_queries(self, aggregations):
+    def _generate_aggregation_queries(self, sql_structure):
+        aggregations = sql_structure["aggregations"]
         aggregation_queries = []
 
         def _construct_graphql_fields(fields):
@@ -404,9 +408,14 @@ class SQLParser:
             parts = column.split(".")
 
             if len(parts) > 1:
-                table, nested_fields = parts[0], parts[1:]
-            else:
-                table, nested_fields = None, parts
+                if sql_structure["subquery"] and sql_structure["subquery"]["table"]:
+                    table = sql_structure["subquery"]["table"]
+                    nested_fields = parts if table not in parts else parts[1:]
+                elif sql_structure["table"]:
+                    table = sql_structure["table"]
+                    nested_fields = parts if table not in parts else parts[1:]
+                else:
+                    table, nested_fields = parts[0], parts[1:]
 
             if table and table in self.mappings:
                 graphql_table, _ = self._resolve_table_mapping(table)
@@ -514,10 +523,11 @@ class SQLParser:
             graphql_table, graphql_fields, conditions_str
         )
         
-        query_tuple = (graphql_query, "DISPLAY")
-        result_queries.append(query_tuple)
+        if graphql_query:
+            query_tuple = (graphql_query, "DISPLAY")
+            result_queries.append(query_tuple)
         
-        aggregation_queries = self._generate_aggregation_queries(aggregations)
+        aggregation_queries = self._generate_aggregation_queries(sql_data)
         result_queries.extend(aggregation_queries)
 
         return result_queries

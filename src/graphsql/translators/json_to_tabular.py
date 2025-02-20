@@ -101,17 +101,19 @@ class JSONToTabular:
                     combined_records.extend(flattened_data)
                 else:
                     self._process_aggregation(operation, flattened_data, aggregation_results)
-
+                    
         if not combined_records and not aggregation_results:
             raise ValueError("Flattening resulted in an empty DataFrame. Check input JSON structure.")
 
         df = pd.DataFrame(combined_records)
 
-        # Merge aggregation results into every row
+        if df.empty:
+            df = pd.DataFrame([{}]) 
+
         if aggregation_results:
             for agg_key, agg_value in aggregation_results.items():
-                df[agg_key] = agg_value  # Assign the same aggregation value to all rows
-
+                df[agg_key] = agg_value
+                
         output_filename = self._generate_output_filename(valid_paths)
         output_path = os.path.join(self.output_dir, output_filename)
 
@@ -144,11 +146,11 @@ class JSONToTabular:
             """
             if isinstance(record, dict):
                 for key, value in record.items():
-                    return extract_scalar_field(value)  # Recursively go deeper
+                    return extract_scalar_field(value)
             elif isinstance(record, list) and record:
-                return extract_scalar_field(record[0])  # Take first item in lists
+                return extract_scalar_field(record[0])
             else:
-                return record  # Base case: return the scalar value
+                return record
 
         values = [extract_scalar_field(record) for record in data]
 
@@ -157,10 +159,7 @@ class JSONToTabular:
 
         numeric_values = np.array([v for v in values if isinstance(v, (int, float))], dtype=float)
 
-        # Perform the aggregation
         if operation == "COUNT":
-            print("COUNT: ", len(values))
-            print("COLUMN: ", f"{operation}({first_key})")
             aggregation_results[f"{operation}({first_key})"] = len(values)
         elif operation == "SUM":
             aggregation_results[f"{operation}({first_key})"] = np.nansum(numeric_values)
