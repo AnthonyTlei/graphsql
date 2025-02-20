@@ -25,9 +25,9 @@ class JSONToTabular:
     def flatten_json(self, obj, parent_key="", depth=0, root_key=None):
         """
         Flatten JSON into a list of dict rows.
-        - 'depth_cutoff' decides how deep we keep flattening lists/dicts.
-        - If we hit a list, we replicate all existing rows for each item in that list.
-        - Removes the root-level key (GraphQL table name) from column names.
+        - If the top-level key is a list (like 'products'), remove it from column names.
+        - 'depth_cutoff' controls how deep we keep flattening nested objects.
+        - If we hit a list, we replicate rows for each item.
         """
         if not isinstance(obj, (dict, list)) or depth >= self.depth_cutoff:
             return [{parent_key: obj}] if parent_key else [{}]
@@ -35,19 +35,19 @@ class JSONToTabular:
         if isinstance(obj, list):
             all_rows = []
             for item in obj:
-                flattened_item = self.flatten_json(item, parent_key, depth + 1, root_key)
+                flattened_item = self.flatten_json(item, "" if depth == 0 else parent_key, depth + 1, root_key)
                 all_rows.extend(flattened_item)
             return all_rows
 
         rows = [{}]
-        
+
         if depth == 0:
             root_key = parent_key
 
         for key, value in obj.items():
             new_key = f"{parent_key}.{key}" if parent_key else key
             if root_key and new_key.startswith(root_key + "."):
-                new_key = new_key[len(root_key) + 1:]  # Strip root table name
+                new_key = new_key[len(root_key) + 1:]
 
             flattened_value = self.flatten_json(value, new_key, depth + 1, root_key)
 
@@ -62,7 +62,7 @@ class JSONToTabular:
                 for r in rows:
                     for fv in flattened_value:
                         r.update(fv)
-        
+
         return rows
 
     def _generate_output_filename(self, json_paths):
@@ -124,6 +124,7 @@ class JSONToTabular:
                 
         order_by_col = data.get("order_by_col", None)
         order_by_dir = data.get("order_by_dir", None)
+        print("DATAFRAME COLS: ", df.columns.tolist())
         if order_by_col and order_by_col in df.columns.tolist():
             ascending = order_by_dir.upper() == "ASC"
             df = df.sort_values(by=order_by_col, ascending=ascending)
