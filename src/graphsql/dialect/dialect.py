@@ -41,7 +41,9 @@ class GraphSQLDialect(DefaultDialect):
     def get_table_names(self, connection, schema=None, **kw):
         """
         Return a list of "tables". Superset uses this to populate the table dropdown in SQL Lab.
-        For your case, you might load them from your introspection or from the `mappings.json`.
+        This now combines:
+        - Scalar fields from `mappings.json` under "Query".
+        - Complex fields from `relations.json` under "Query".
         """
         endpoint_url = str(connection.engine.url)
         parsed_url = urlparse(endpoint_url)
@@ -52,13 +54,18 @@ class GraphSQLDialect(DefaultDialect):
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
+        
         mappings = self._load_json(mappings_path)
         relations = self._load_json(relations_path)
         
-        # Suppose you have something like mappings = {"Page": {...}, "Media": {...}}
-        # This'll return the keys as "table" names.
-        print(mappings)
-        return list(mappings.keys())
+        scalar_fields = list(mappings.get("Query", {}).keys())
+        print("Scalar fields under Query: ", scalar_fields)
+        complex_fields = [entry["field"] for entry in relations.get("Query", []) if "field" in entry]
+        print("Complex fields under Query: ", complex_fields)
+        
+        table_names = list(set(scalar_fields + complex_fields))
+        
+        return table_names
 
     @reflection.cache
     def get_view_names(self, connection, schema=None, **kw):
