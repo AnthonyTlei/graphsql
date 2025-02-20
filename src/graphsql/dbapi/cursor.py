@@ -63,7 +63,6 @@ class GraphSQLCursor:
             self._description = []
             return
         
-        # Load the file based on format
         if self.output_format == "csv":
             df = pd.read_csv(file_path)
         elif self.output_format == "parquet":
@@ -73,17 +72,13 @@ class GraphSQLCursor:
         else:
             raise ValueError(f"Unsupported format: {self.output_format}")
 
-        # Ensure aggregation column names match what Superset expects
-        df.columns = [col.replace("(", "_").replace(")", "").replace(".", "_") for col in df.columns]
-
-        # Store results in a structured format
+        # df.columns = [col.replace("(", "_").replace(")", "").replace(".", "_") for col in df.columns]
+        
         self._results = df.to_records(index=False)
-
-        # Ensure Superset knows these columns exist
         self._description = [(col, None) for col in df.columns]
 
         print("\n✅ Loaded Results (Columns):", df.columns)
-        print(df.head())  # Show data preview
+        print(df.head())
 
     def fetchall(self):
         """Returns all rows of the last executed query."""
