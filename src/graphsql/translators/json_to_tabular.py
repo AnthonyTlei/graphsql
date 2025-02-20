@@ -114,6 +114,14 @@ class JSONToTabular:
             for agg_key, agg_value in aggregation_results.items():
                 df[agg_key] = agg_value
                 
+        limit = data.get("limit")
+        if limit:
+            try:
+                limit = int(limit)
+                df = df.head(limit)
+            except ValueError:
+                print("⚠️ Invalid LIMIT value, ignoring.")
+                
         output_filename = self._generate_output_filename(valid_paths)
         output_path = os.path.join(self.output_dir, output_filename)
 

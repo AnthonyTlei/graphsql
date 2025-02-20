@@ -2,7 +2,7 @@ import json
 import re
 import sqlparse
 from sqlparse.sql import IdentifierList, Identifier, Parenthesis, Token, Function
-from sqlparse.tokens import DML, Keyword, Wildcard
+from sqlparse.tokens import DML, Keyword, Wildcard, Whitespace
 
 AGGREGATION_FUNCTIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
 class SQLParser:
@@ -228,6 +228,7 @@ class SQLParser:
         Look for WHERE, ORDER BY, and LIMIT tokens in the statement.
         We'll do a simpler version that basically checks each token's value.
         """
+        print("STATEMENT: ", statement)
         tokens = statement.tokens
         i = 0
         while i < len(tokens):
@@ -264,10 +265,15 @@ class SQLParser:
 
             # LIMIT
             if t.ttype is Keyword and upper_val == "LIMIT":
-                if (i+1) < len(tokens):
-                    limit_token = tokens[i+1]
+                j = i + 1
+                while j < len(tokens) and tokens[j].ttype in Whitespace:
+                    j += 1
+                if j < len(tokens):
+                    limit_token = tokens[j]
                     sql_structure["limit"] = limit_token.value.strip()
-                i += 2
+                    print("LIMIT VALUE:", sql_structure["limit"])
+
+                i = j + 1
                 continue
 
             i += 1
@@ -529,5 +535,10 @@ class SQLParser:
         
         aggregation_queries = self._generate_aggregation_queries(sql_data)
         result_queries.extend(aggregation_queries)
+        
+        data = {
+            "queries": result_queries,
+            "limit": limit
+        }
 
-        return result_queries
+        return data
