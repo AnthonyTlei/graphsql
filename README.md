@@ -12,6 +12,7 @@ GraphSQL is a lightweight SQL-to-GraphQL connector designed to enable seamless q
 
 ## 📦 Installation
 
+Requirements: Python 3.9+
 For the experimental release, install directly from GitHub:
 
 ```sh
@@ -20,7 +21,7 @@ pip install git+https://github.com/AnthonyTlei/graphsql.git
 
 ## 🔧 Usage
 
-### Uuse with python and sqlalchemy
+### Python
 
 ```python
 import graphsql.dialect.dialect
@@ -45,6 +46,66 @@ def test_graphsql_dialect():
 if __name__ == "__main__":
     test_graphsql_dialect()
 ```
+
+### Superset
+
+1. Create a virtual_env
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+2. Install superset
+
+   ```bash
+   pip install apache-superset
+   ```
+
+3. Install GraphSQL
+
+   ```bash
+   pip install git+https://github.com/AnthonyTlei/graphsql.git
+   ```
+
+4. Environment variables
+
+   ```bash
+   export SUPERSET_SECRET_KEY=secret
+   export FLASK_APP=superset
+   ```
+
+5. Init superset & User creation
+
+   ```bash
+   superset db upgrade
+   superset fab create-admin
+   ```
+
+6. Start superset
+
+   ```bash
+   superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger
+   ```
+
+7. Add a database, select Other and connect to endpoint using graphsql dialect
+
+   e.g. graphsql://graphql.anilist.co
+   (Here you can also specify connection type with is_http and auth arguments Basic or Bearer with url encoding)
+
+   ![Connection](docs/images/superset/superset-connection.png)
+
+8. Test the endpoint, navigate schema, tables, columns
+
+   ![Schema](docs/images/superset/superset-tables-columns.png)
+
+9. Test a sample query
+
+   ![Query](docs/images/superset/superset-sample-query.png)
+
+10. Test Chart creation
+
+    ![Chart](docs/images/superset/superset-sample-chart.png)
 
 ### 🌐 Handling HTTP Endpoints & Authentication
 
