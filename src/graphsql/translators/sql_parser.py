@@ -556,35 +556,23 @@ class SQLParser:
         )
         
         if graphql_query:
-            query_tuple = (graphql_query, "DISPLAY")
+            query_tuple = (graphql_query)
             result_queries.append(query_tuple)
-        
-        aggregation_queries = self._generate_aggregation_queries(sql_data)
-        result_queries.extend(aggregation_queries)
+        else:
+            aggregation_queries = self._generate_aggregation_queries(sql_data)
+            result_queries.extend(aggregation_queries)
         
         order_by_column, order_by_direction = self._validate_order_by(sql_data)
-        
-        group_by_agg = None 
-        if group_by:
-            for agg in aggregations:
-                agg_func = agg[0]
-                agg_field = agg[1]
-                if agg_func.upper() in AGGREGATION_FUNCTIONS and group_by == agg_field:
-                    group_by_agg = agg_func
-                    break
-
-            if not group_by_agg:
-                group_by = None
-                group_by_agg = None
                     
-        
         data = {
             "queries": result_queries,
             "limit": limit,
             "order_by_col": order_by_column,
             "order_by_dir": order_by_direction,
             "group_by": group_by,
-            "group_by_agg": group_by_agg
+            "aggregations": aggregations
         }
+        
+        print("GraphQL Queries: ", data)
         
         return data

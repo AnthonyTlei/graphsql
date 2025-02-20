@@ -85,7 +85,6 @@ class JSONToTabular:
         
         combined_records = []
         valid_paths = []
-        aggregation_results = {}
 
         for json_path in json_paths:
             if not json_path or not os.path.exists(json_path):
@@ -100,62 +99,15 @@ class JSONToTabular:
             if "data" not in data:
                 raise ValueError(f"Invalid GraphQL response format in {json_path}: 'data' field missing.")
 
-            operation = data.get("operation", "DISPLAY")
-
             for key, value in data["data"].items():
                 flattened_data = self.flatten_json(value, parent_key=key)
-
-                if operation == "DISPLAY":
-                    combined_records.extend(flattened_data)
-                else:
-                    self._process_aggregation(operation, flattened_data, aggregation_results)
+                combined_records.extend(flattened_data)
                     
-        if not combined_records and not aggregation_results:
-            raise ValueError("Flattening resulted in an empty DataFrame. Check input JSON structure.")
-
         df = pd.DataFrame(combined_records)
 
         if df.empty:
             df = pd.DataFrame([{}]) 
 
-        if aggregation_results:
-            for agg_key, agg_value in aggregation_results.items():
-                df[agg_key] = agg_value
-                
-        print("DATAFRAME COLS: ", df.columns.tolist())
-        
-        # Group By
-        group_by = data.get("group_by", None)
-        group_by_agg = data.get("group_by_agg", "COUNT") 
-        if group_by and group_by in df.columns:
-            aggregation_mapping = {
-                "COUNT": "count",
-                "SUM": "sum",
-                "AVG": "mean",
-                "MIN": "min",
-                "MAX": "max"
-            }
-            agg_func = aggregation_mapping.get(group_by_agg, "count")
-            non_grouped_cols = [col for col in df.columns if col != group_by]
-            agg_dict = {col: agg_func for col in non_grouped_cols}
-            df = df.groupby(group_by, as_index=False).agg(agg_dict)
-                
-        # Order By
-        order_by_col = data.get("order_by_col", None)
-        order_by_dir = data.get("order_by_dir", None)
-        if order_by_col and order_by_col in df.columns.tolist():
-            ascending = order_by_dir.upper() == "ASC"
-            df = df.sort_values(by=order_by_col, ascending=ascending)
-            
-        # Limit
-        limit = data.get("limit")
-        if limit:
-            try:
-                limit = int(limit)
-                df = df.head(limit)
-            except ValueError:
-                print("⚠️ Invalid LIMIT value, ignoring.")
-                
         output_filename = self._generate_output_filename(valid_paths)
         output_path = os.path.join(self.output_dir, output_filename)
 
@@ -170,44 +122,4 @@ class JSONToTabular:
 
         print(f"✅ Combined data saved to {output_path}")
         return output_path
-
-    def _process_aggregation(self, operation, data, aggregation_results):
-        """
-        Processes aggregation functions like COUNT, SUM, AVG, MIN, MAX.
-        :param operation: Aggregation type (e.g., COUNT, SUM, AVG).
-        :param data: Flattened JSON data extracted from GraphQL response.
-        :param aggregation_results: Dictionary storing computed aggregation results.
-        """
-        if not data:
-            return
-
-        def extract_scalar_field(record):
-            """
-            Recursively extracts the deepest scalar field from nested JSON.
-            Assumes that only one scalar value exists per record.
-            """
-            if isinstance(record, dict):
-                for key, value in record.items():
-                    return extract_scalar_field(value)
-            elif isinstance(record, list) and record:
-                return extract_scalar_field(record[0])
-            else:
-                return record
-
-        values = [extract_scalar_field(record) for record in data]
-
-        first_key = list(data[0].keys())[0]
-        field_name = first_key.replace(".", "_")
-
-        numeric_values = np.array([v for v in values if isinstance(v, (int, float))], dtype=float)
-
-        if operation == "COUNT":
-            aggregation_results[f"{operation}({first_key})"] = len(values)
-        elif operation == "SUM":
-            aggregation_results[f"{operation}({first_key})"] = np.nansum(numeric_values)
-        elif operation == "AVG":
-            aggregation_results[f"{operation}({first_key})"] = np.nanmean(numeric_values) if len(numeric_values) > 0 else None
-        elif operation == "MIN":
-            aggregation_results[f"{operation}({first_key})"] = np.nanmin(numeric_values) if len(numeric_values) > 0 else None
-        elif operation == "MAX":
-            aggregation_results[f"{operation}({first_key})"] = np.nanmax(numeric_values) if len(numeric_values) > 0 else None
+        
