@@ -4,6 +4,8 @@ import hashlib
 import pandas as pd
 import numpy as np
 
+from graphsql.dbapi.duckdb import DuckDBSingleton
+
 class JSONToTabular:
     """
     Converts multiple JSON responses from GraphQL queries into a single tabular format,
@@ -117,9 +119,14 @@ class JSONToTabular:
             df.to_parquet(output_path, index=False)
         elif self.output_format == "jsonl":
             df.to_json(output_path, orient="records", lines=True)
+        elif self.output_format == "duckdb":
+            con = DuckDBSingleton.get_connection()
+            con.execute("DROP TABLE IF EXISTS virtual_table")
+            con.execute("CREATE TABLE virtual_table AS SELECT * FROM df")
+            print("✅ Data stored in DuckDB's `virtual_table`")
+            return "virtual_table"
         else:
             raise ValueError("Unsupported output format.")
 
-        print(f"✅ Combined data saved to {output_path}")
         return output_path
         

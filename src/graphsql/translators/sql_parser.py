@@ -228,7 +228,6 @@ class SQLParser:
         Look for WHERE, ORDER BY, and LIMIT tokens in the statement.
         We'll do a simpler version that basically checks each token's value.
         """
-        print("STATEMENT: ", statement)
         tokens = statement.tokens
         i = 0
         while i < len(tokens):

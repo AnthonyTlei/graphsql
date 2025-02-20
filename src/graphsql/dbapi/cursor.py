@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 class GraphSQLCursor:
     """DBAPI-compliant cursor for executing SQL queries via GraphQL."""
 
-    def __init__(self, endpoint: str, headers: dict = None, output_format="parquet"):
+    def __init__(self, endpoint: str, headers: dict = None, output_format="duckdb"):
         """
         Initializes the cursor.
 
@@ -50,32 +50,16 @@ class GraphSQLCursor:
         else :
             json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
 
-        tabular_file_path = JSONToTabular(output_format=self.output_format,depth_cutoff=5).convert(json_paths=json_files_path)
+        table_name = JSONToTabular(output_format=self.output_format,depth_cutoff=5).convert(json_paths=json_files_path)
 
-        self._load_results(tabular_file_path)
-
-    def _load_results(self, file_path):
-        """Loads the tabular data into the shared DuckDB database for efficient querying."""
+        self._load_results(table_name)
         
-        if not file_path:
-            self._results = []
-            self._description = []
-            return
-        
-        con = DuckDBSingleton.get_connection()  
+    def _load_results(self, table_name):
+        """Loads the tabular data from DuckDB instead of reading from a file."""
 
-        if self.output_format == "csv":
-            con.execute(f"CREATE TABLE IF NOT EXISTS virtual_table AS SELECT * FROM read_csv_auto('{file_path}')")
-        elif self.output_format == "parquet":
-            con.execute(f"CREATE TABLE IF NOT EXISTS virtual_table AS SELECT * FROM read_parquet('{file_path}')")
-        elif self.output_format == "jsonl":
-            con.execute(f"CREATE TABLE IF NOT EXISTS virtual_table AS SELECT * FROM read_json_auto('{file_path}')")
-        else:
-            raise ValueError(f"Unsupported format: {self.output_format}")
-
-        df = con.execute("SELECT * FROM virtual_table LIMIT 5").fetchdf()
-
-        self._results = con.execute("SELECT * FROM virtual_table").fetchall()
+        con = DuckDBSingleton.get_connection()
+        df = con.execute(f"SELECT * FROM {table_name} LIMIT 5").fetchdf()
+        self._results = con.execute(f"SELECT * FROM {table_name}").fetchall()
         self._description = [(col, None) for col in df.columns]
 
         print("\n✅ Loaded Results (Columns):", df.columns)
