@@ -247,8 +247,10 @@ class SQLParser:
                     parts = order_token.value.split()
                     if len(parts) == 2:
                         field, direction = parts
-                    else:
+                    elif len(parts) > 0:
                         field, direction = parts[0], "ASC"
+                    else:
+                        field, direction = ("", "")
                     sql_structure["order_by"] = f"{field}: {direction.upper()}"
                 i += 2
                 continue
