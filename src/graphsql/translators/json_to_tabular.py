@@ -1,10 +1,11 @@
 import os
 import json
+import hashlib
 import pandas as pd
 
 class JSONToTabular:
     """
-    Converts a JSON response from a GraphQL query into a tabular format,
+    Converts multiple JSON responses from GraphQL queries into a single tabular format,
     flattening nested structures and exploding lists into rows.
     """
 
@@ -20,38 +21,34 @@ class JSONToTabular:
         self.output_dir = os.path.join(output_dir, "tabular")
         os.makedirs(self.output_dir, exist_ok=True)
         
-    def flatten_json(self, obj, parent_key="", depth=0, depth_cutoff=2):
+    def flatten_json(self, obj, parent_key="", depth=0):
         """
-        Flatten JSON into a list of dict rows. 
+        Flatten JSON into a list of dict rows.
         - 'depth_cutoff' decides how deep we keep flattening lists/dicts.
         - If we hit a list, we replicate all existing rows for each item in that list.
         """
-        if not isinstance(obj, (dict, list)) or depth >= depth_cutoff:
+        if not isinstance(obj, (dict, list)) or depth >= self.depth_cutoff:
             return [{parent_key: obj}] if parent_key else [{}]
         
         if isinstance(obj, list):
             all_rows = []
             for item in obj:
-                flattened_item = self.flatten_json(item, parent_key, depth + 1, depth_cutoff)
+                flattened_item = self.flatten_json(item, parent_key, depth + 1)
                 all_rows.extend(flattened_item)
             return all_rows
 
-        rows = [ {} ]
+        rows = [{}]
         for key, value in obj.items():
             new_key = f"{parent_key}.{key}" if parent_key else key
-            
-            flattened_value = self.flatten_json(value, new_key, depth + 1, depth_cutoff)
+            flattened_value = self.flatten_json(value, new_key, depth + 1)
 
-            if len(flattened_value) > 0 and isinstance(flattened_value, list):
-                if isinstance(flattened_value[0], dict):
-                    new_rows = []
-                    for existing_row in rows:
-                        for fv in flattened_value:
-                            merged = dict(existing_row, **fv)
-                            new_rows.append(merged)
-                    rows = new_rows
-                else:
-                    pass
+            if isinstance(flattened_value, list) and flattened_value and isinstance(flattened_value[0], dict):
+                new_rows = []
+                for existing_row in rows:
+                    for fv in flattened_value:
+                        merged = dict(existing_row, **fv)
+                        new_rows.append(merged)
+                rows = new_rows
             else:
                 for r in rows:
                     for fv in flattened_value:
@@ -59,34 +56,59 @@ class JSONToTabular:
         
         return rows
 
-    def convert(self, json_path):
+    def _generate_output_filename(self, json_paths):
         """
-        Converts a JSON file to a tabular format.
-        :param json_path: Path to the JSON file containing the GraphQL response.
-        :return: Path of the saved tabular file.
+        Generate a unique output filename based on a hash of the input file paths.
+        """
+        hash_input = "|".join(sorted(json_paths)).encode()
+        file_hash = hashlib.md5(hash_input).hexdigest()
+        return f"output_{file_hash}.{self.output_format}"
+
+    def convert(self, json_paths):
+        """
+        Converts multiple JSON files to a single tabular format.
+        :param json_paths: List of paths to JSON files containing GraphQL responses.
+        :return: Path of the saved combined tabular file.
         """
         
-        if not json_path:
-            return ""
+        if not json_paths:
+            raise ValueError("No input JSON files provided.")
         
-        with open(json_path, "r") as file:
-            data = json.load(file)
+        combined_records = []
+        valid_paths = []
 
-        if "data" not in data:
-            raise ValueError("Invalid GraphQL response format: 'data' field missing.")
+        for json_path in json_paths:
+            if not json_path or not os.path.exists(json_path):
+                print(f"⚠️ Skipping missing file: {json_path}")
+                continue
+            
+            valid_paths.append(json_path)
 
-        extracted_records = []
-        for key, value in data["data"].items():
-            flattened_data = self.flatten_json(value, parent_key=key, depth_cutoff=self.depth_cutoff)
-            extracted_records.extend(flattened_data)
+            with open(json_path, "r") as file:
+                data = json.load(file)
 
-        df = pd.DataFrame(extracted_records)
+            if "data" not in data:
+                raise ValueError(f"Invalid GraphQL response format in {json_path}: 'data' field missing.")
 
-        if df.empty:
+            operation = data.get("operation", "DISPLAY")  # Default to DISPLAY if not present
+
+            for key, value in data["data"].items():
+                flattened_data = self.flatten_json(value, parent_key=key)
+                
+                # Add operation as a column for tracking if it's not DISPLAY
+                if operation != "DISPLAY":
+                    for record in flattened_data:
+                        record["operation"] = operation
+
+                combined_records.extend(flattened_data)
+
+        if not combined_records:
             raise ValueError("Flattening resulted in an empty DataFrame. Check input JSON structure.")
 
-        filename = os.path.basename(json_path).replace(".json", f".{self.output_format}")
-        output_path = os.path.join(self.output_dir, filename)
+        df = pd.DataFrame(combined_records)
+
+        output_filename = self._generate_output_filename(valid_paths)
+        output_path = os.path.join(self.output_dir, output_filename)
 
         if self.output_format == "csv":
             df.to_csv(output_path, index=False)
@@ -97,14 +119,5 @@ class JSONToTabular:
         else:
             raise ValueError("Unsupported output format.")
 
-        print(f"✅ Data saved to {output_path}")
+        print(f"✅ Combined data saved to {output_path}")
         return output_path
-
-if __name__ == "__main__":
-    converter = JSONToTabular(output_format="parquet", depth_cutoff=10)
-    sample_json_path = "/Users/anthonytleiji/dev/graphsql/data/query_9d913ce1f5_1739388150.json"
-    output_path = converter.convert(sample_json_path)
-    
-    import pandas as pd
-    df = pd.read_parquet(output_path, engine='pyarrow')
-    print(df.head())

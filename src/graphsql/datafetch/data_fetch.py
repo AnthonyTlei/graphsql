@@ -1,83 +1,57 @@
-import os
 import json
-import requests
 import hashlib
-import time
+import os
+import requests
 
 class DataFetch:
-    """
-    Fetches data from a GraphQL endpoint and saves the JSON response to a file.
-    """
-    def __init__(self, endpoint_url, data_dir="./data", retries=3, timeout=10, auth_token=None):
-        """
-        Initialize DataFetch with endpoint details and configurations.
-        :param endpoint_url: URL of the GraphQL endpoint.
-        :param data_dir: Directory where JSON responses are stored.
-        :param retries: Number of retries on failure.
-        :param timeout: Timeout for each request.
-        :param auth_token: Optional authentication token for the request.
-        """
-        self.endpoint_url = endpoint_url
-        self.data_dir = data_dir
-        self.retries = retries
-        self.timeout = timeout
-        self.auth_token = auth_token
+    def __init__(self, endpoint, output_dir="root/data/"):
+        self.endpoint = endpoint
+        self.output_dir = output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
 
-        os.makedirs(self.data_dir, exist_ok=True)
+    def _generate_filename(self, query, operation):
+        """Generate a unique filename based on query hash and operation."""
+        query_hash = hashlib.md5(query.encode()).hexdigest()
+        return os.path.join(self.output_dir, f"response_{query_hash}_{operation.lower()}.json")
 
-    def _generate_filename(self, query):
-        """
-        Generates a unique filename based on the GraphQL query.
-        :param query: GraphQL query string.
-        :return: Filename for storing the JSON response.
-        """
-        query_hash = hashlib.md5(query.encode()).hexdigest()[:10]
-        timestamp = int(time.time())
-        return f"query_{query_hash}_{timestamp}.json"
+    def _save_json(self, filepath, data, operation):
+        """Save JSON response to file, adding 'operation' field if necessary."""
+        if operation != "DISPLAY":
+            data["operation"] = operation
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
-    def fetch_data(self, query, variables=None):
+    def fetch_data(self, queries_with_operations):
         """
-        Sends a GraphQL query to the endpoint and saves the response to a file.
-        :param query: The GraphQL query string.
-        :param variables: Optional variables for the query.
-        :return: Path to the saved JSON file.
+        Executes a list of GraphQL queries sequentially.
+
+        Args:
+            queries_with_operations (list of tuples): [(query, operation)]
+
+        Returns:
+            list: Filepaths of the stored JSON responses.
         """
-        payload = {"query": query, "variables": variables or {}}
-        headers = {"Content-Type": "application/json"}
+        filepaths = []
         
-        if self.auth_token:
-            headers["Authorization"] = f"{self.auth_token}"
+        for query_tuple in queries_with_operations:
+            if isinstance(query_tuple, tuple) and len(query_tuple) == 2:
+                query, operation = query_tuple
+            else:
+                print(f"Invalid query format: {query_tuple}. Skipping.")
+                filepaths.append(None)
+                continue
             
-        if not query:
-            return ""
-        
-        for attempt in range(1, self.retries + 1):
-            try:
-                response = requests.post(
-                    self.endpoint_url,
-                    json=payload,
-                    headers=headers,
-                    timeout=self.timeout
-                )
-                response.raise_for_status()
-                json_data = response.json()
-                
-                if "errors" in json_data:
-                    raise ValueError(f"GraphQL Error: {json_data['errors']}")
-                
-                filename = self._generate_filename(query)
-                file_path = os.path.join(self.data_dir, filename)
-                with open(file_path, "w") as file:
-                    json.dump(json_data, file, indent=2)
-                
-                print(f"✅ Data saved to {file_path}")
-                return file_path
+            operation = operation.upper() if operation else "DISPLAY"
             
-            except (requests.RequestException, ValueError) as e:
-                print(f"⚠️ Attempt {attempt}/{self.retries} failed: {e}")
-                if attempt == self.retries:
-                    print("❌ All retry attempts failed.")
-                    return None
-                time.sleep(2 ** attempt)
+            response = requests.post(self.endpoint, json={"query": query})
+            if response.status_code == 200:
+                result = response.json()
+                filepath = self._generate_filename(query, operation)
+                self._save_json(filepath, result, operation)
+                filepaths.append(filepath)
+            else:
+                print(f"Query failed ({operation}): {response.status_code}\n{response.text}")
+                filepaths.append(None)
 
-        return None
+        print("Fetched Data Files: ", filepaths)
+        return filepaths

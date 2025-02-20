@@ -436,6 +436,7 @@ class SQLParser:
         """
         print("Raw SQL Query: ", sql_query)
         sql_data = self.parse_sql(sql_query)
+        result_queries = []
 
         # If there's a subquery, override table/fields with subquery data
         if sql_data["subquery"]:
@@ -457,6 +458,8 @@ class SQLParser:
         graphql_query = self._resolve_graphql_structure(
             graphql_table, graphql_fields, conditions_str
         )
+        
+        query_tuple = (graphql_query, "DISPLAY")
+        result_queries.append(query_tuple)
 
-        print("GraphQL Query:", graphql_query)
-        return graphql_query
+        return result_queries

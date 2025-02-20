@@ -42,14 +42,15 @@ class GraphSQLCursor:
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
-        graphql_query = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
+        graphql_queries = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
+        print("GraphQL Queries: ", graphql_queries)
 
         if self.headers and self.headers["Authorization"]:
-            json_file_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(graphql_query)
+            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(graphql_queries)
         else :
-            json_file_path = DataFetch(self.endpoint).fetch_data(graphql_query)
+            json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
 
-        tabular_file_path = JSONToTabular(output_format=self.output_format,depth_cutoff=5).convert(json_path=json_file_path)
+        tabular_file_path = JSONToTabular(output_format=self.output_format,depth_cutoff=5).convert(json_paths=json_files_path)
 
         self._load_results(tabular_file_path)
 
