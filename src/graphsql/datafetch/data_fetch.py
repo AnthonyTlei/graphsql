@@ -20,19 +20,17 @@ class DataFetch:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
-    def fetch_data(self, data):
+    def fetch_data(self, queries):
         """
         Executes a list of GraphQL queries sequentially.
 
         Args:
-            data
+            queries: list of graphql queries
 
         Returns:
             list: Filepaths of the stored JSON responses.
         """
         filepaths = []
-        queries = data["queries"]
-        
         for query in queries:
             payload = {"query": query}
             headers = {"Content-Type": "application/json"}

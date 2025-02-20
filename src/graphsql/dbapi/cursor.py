@@ -43,14 +43,18 @@ class GraphSQLCursor:
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
-        graphql_queries = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
+        parsed_data = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
+        queries = parsed_data.get("queries", [])
+        filters = parsed_data.get("filters", {})
 
         if self.headers and self.headers["Authorization"]:
-            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(graphql_queries)
+            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(queries)
         else :
-            json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
+            json_files_path = DataFetch(self.endpoint).fetch_data(queries)
 
         table_name = JSONToTabular(output_format=self.output_format,depth_cutoff=5).convert(json_paths=json_files_path)
+        
+        print("Remaining filters: ", filters)
 
         self._load_results(table_name)
         

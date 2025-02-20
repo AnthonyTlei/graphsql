@@ -565,13 +565,15 @@ class SQLParser:
                     
         data = {
             "queries": result_queries,
-            "limit": limit,
-            "order_by_col": order_by_column,
-            "order_by_dir": order_by_direction,
-            "group_by": group_by,
-            "aggregations": aggregations
+            "filters": {
+                "limit": limit,
+                "order_by_col": order_by_column,
+                "order_by_dir": order_by_direction,
+                "group_by": group_by,
+                "aggregations": aggregations
+            }
         }
         
-        print("GraphQL Queries: ", data)
+        print("Parsed Data: ", data)
         
         return data
