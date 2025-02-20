@@ -4,9 +4,10 @@ import os
 import requests
 
 class DataFetch:
-    def __init__(self, endpoint, output_dir="data/"):
+    def __init__(self, endpoint, output_dir="data/", auth_token=None):
         self.endpoint = endpoint
         self.output_dir = output_dir
+        self.auth_token = auth_token
         os.makedirs(self.output_dir, exist_ok=True)
 
     def _generate_filename(self, query, operation):
@@ -51,8 +52,16 @@ class DataFetch:
                 continue
             
             operation = operation.upper() if operation else "DISPLAY"
+            payload = {"query": query}
+            headers = {"Content-Type": "application/json"}
             
-            response = requests.post(self.endpoint, json={"query": query})
+            if self.auth_token:
+                headers["Authorization"] = f"{self.auth_token}"
+            response = requests.post(
+                    self.endpoint,
+                    json=payload,
+                    headers=headers,
+                )
             if response.status_code == 200:
                 result = response.json()
                 filepath = self._generate_filename(query, operation)
