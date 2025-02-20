@@ -1,6 +1,7 @@
 from graphsql.translators.sql_parser import SQLParser
 from graphsql.datafetch.data_fetch import DataFetch
 from graphsql.translators.json_to_tabular import JSONToTabular
+from graphsql.translators.sql_post_processor import SQLPostProcessor
 from graphsql.dbapi.duckdb import DuckDBSingleton
 
 import hashlib
@@ -27,36 +28,36 @@ class GraphSQLCursor:
 
     def execute(self, statement, parameters=None, context=None):
         """
-        Executes an SQL query by translating it to GraphQL and fetching results.
-
-        Args:
-            sql (str): The SQL query to execute.
+        Executes an SQL query by translating it to GraphQL and applying remaining filters in DuckDB.
         """
         if self._closed:
             raise Exception("Cursor is closed.")
         
         parsed_url = urlparse(self.endpoint)
-        if parsed_url.scheme in ["http", "https", "graphsql"]:
-            cleaned_endpoint = parsed_url.netloc + parsed_url.path
-        else:
-            cleaned_endpoint = self.endpoint
+        cleaned_endpoint = parsed_url.netloc + parsed_url.path if parsed_url.scheme in ["http", "https", "graphsql"] else self.endpoint
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
+
         parsed_data = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
         queries = parsed_data.get("queries", [])
         filters = parsed_data.get("filters", {})
 
-        if self.headers and self.headers["Authorization"]:
+        if self.headers and "Authorization" in self.headers:
             json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(queries)
-        else :
+        else:
             json_files_path = DataFetch(self.endpoint).fetch_data(queries)
 
-        table_name = JSONToTabular(output_format=self.output_format,depth_cutoff=5).convert(json_paths=json_files_path)
-        
-        print("Remaining filters: ", filters)
+        JSONToTabular(output_format="duckdb", depth_cutoff=5).convert(json_paths=json_files_path)
 
-        self._load_results(table_name)
+        sql_post_processor = SQLPostProcessor(filters)
+        result_df = sql_post_processor.execute()
+
+        self._results = result_df.to_records(index=False)
+        self._description = [(col, None) for col in result_df.columns]
+
+        print("\n✅ Final Processed Results (Columns):", result_df.columns)
+        print(result_df.head())
         
     def _load_results(self, table_name):
         """Loads the tabular data from DuckDB instead of reading from a file."""

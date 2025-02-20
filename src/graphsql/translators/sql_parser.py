@@ -2,7 +2,7 @@ import json
 import re
 import sqlparse
 from sqlparse.sql import IdentifierList, Identifier, Parenthesis, Token, Function
-from sqlparse.tokens import DML, Keyword, Wildcard, Whitespace
+from sqlparse.tokens import DML, Keyword, Wildcard, Whitespace, Punctuation
 
 AGGREGATION_FUNCTIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
 class SQLParser:
@@ -23,7 +23,6 @@ class SQLParser:
         """
         # Parse the entire statement (Only 1 statement is supported at a time for now)
         statement = sqlparse.parse(sql_query)[0]
-        print("Parsed Statement: ", statement)
 
         # Build result structure
         sql_structure = {
@@ -60,7 +59,6 @@ class SQLParser:
         # 5) Extract aggregations
         self._extract_aggregations(sql_structure)
 
-        print("Parsed SQL Structure: ", sql_structure)
         return sql_structure
 
     def _extract_fields(self, statement, sql_structure):
@@ -250,11 +248,29 @@ class SQLParser:
             # ORDER BY
             if t.ttype is Keyword and upper_val == "ORDER BY":
                 j = i + 1
+                
                 while j < len(tokens) and tokens[j].ttype in Whitespace:
                     j += 1
+                    
                 if j < len(tokens):
-                    limit_token = tokens[j]
-                    sql_structure["order_by"] = limit_token.value.strip()
+                    token = tokens[j]
+                    order_by = token.value.strip()
+                    j += 1
+                    
+                if len(order_by.split()) == 2:
+                    sql_structure["order_by"], sql_structure["order_by_direction"] = order_by.split()
+                    i = j + 1
+                    continue
+                else:
+                    sql_structure["order_by"] = order_by.strip()
+                
+                while j < len(tokens) and tokens[j].ttype in Whitespace:
+                    j += 1
+                
+                if j < len(tokens):
+                    token = tokens[j]
+                    dir = token.value.strip() if token.value.strip() in {"ASC", "DESC"} else "ASC"
+                    sql_structure["order_by_direction"] = dir
 
                 i = j + 1
                 continue
@@ -353,19 +369,23 @@ class SQLParser:
 
         return sub_structure
 
-    def _parse_fields_with_nesting(self, fields, table):
-        """Parses nested fields based on mappings (simple approach)."""
+    def _parse_fields_with_nesting(self, fields, table, aggregations=None):
+        """Parses nested fields based on mappings, supporting aggregations."""
         parsed_fields = {}
-        
+
         if not table:
             return parsed_fields
+
+        if aggregations:
+            for agg_func, agg_field in aggregations:
+                fields.append(agg_field)
 
         if "*" in fields:
             if table in self.mappings:
                 for field, _type in self.mappings[table].items():
                     parsed_fields[field] = True
             return parsed_fields
-        
+
         for field in fields:
             parts = field.split(".")
             parent = parts[0]
@@ -377,7 +397,7 @@ class SQLParser:
                     if part not in current_level:
                         current_level[part] = {} if i < len(parts) - 1 else True
                     current_level = current_level[part]
-        
+
         return parsed_fields
 
     def _generate_conditions(self, conditions, singular_table):
@@ -438,19 +458,18 @@ class SQLParser:
 
         return aggregation_queries
 
-    def _validate_order_by(self, sql_structure): 
-        order = sql_structure.get("order_by", None)
-        if not order:
+    def _validate_order_by(self, sql_structure):
+        """Validates the ORDER BY clause, ensuring the column exists in selected fields or aggregations."""
+        
+        order_col = sql_structure.get("order_by", None)
+        order_dir = sql_structure.get("order_by_direction", None)
+        
+        if not order_col:
             return (None, None)
-        parts = order.split()
-        column = parts[0] if len(parts) > 0 else None
-        direction = parts[1].upper() if len(parts) > 1 else "ASC"
-        fields = sql_structure.get("fields", [])
-        if column not in fields:
-            return (None, None)
-        if not direction or direction.upper() not in {"ASC", "DESC"}:
-            direction = "ASC"
-        return (column, direction)
+
+        # TODO: Implement validation, order can be aggregation of selected field or a selected field
+
+        return (order_col, order_dir)
 
     def _resolve_graphql_structure(self, graphql_table, graphql_fields, conditions_str):
         """Build the final GraphQL query string."""
@@ -478,7 +497,6 @@ class SQLParser:
 
     def _resolve_table_mapping(self, table):
         """Resolves table mapping from SQL name to GraphQL field/type name."""
-        print("Resolving table: ", table)
         if not table:
             return "Unknown", "Unknown"
 
@@ -522,10 +540,10 @@ class SQLParser:
         If the parsed structure has a subquery, we'll use the subquery's
         table/fields as the real data source.
         """
-        print("Raw SQL Query: ", sql_query)
         sql_data = self.parse_sql(sql_query)
-        print("SQL Structure: ", sql_data)
         result_queries = []
+        
+        print("Parsed SQL: ", sql_data)
 
         # If there's a subquery, override table/fields with subquery data
         if sql_data["subquery"]:
@@ -547,7 +565,7 @@ class SQLParser:
             group_by = sql_data.get("group_by", None)
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
-        graphql_fields = self._parse_fields_with_nesting(fields, singular_table)
+        graphql_fields = self._parse_fields_with_nesting(fields, singular_table, aggregations=aggregations)
         conditions_str = self._generate_conditions(conditions, singular_table)
 
         graphql_query = self._resolve_graphql_structure(
@@ -567,13 +585,13 @@ class SQLParser:
             "queries": result_queries,
             "filters": {
                 "limit": limit,
-                "order_by_col": order_by_column,
-                "order_by_dir": order_by_direction,
+                "order_by": order_by_column,
+                "order_by_direction": order_by_direction,
                 "group_by": group_by,
                 "aggregations": aggregations
             }
         }
         
-        print("Parsed Data: ", data)
+        print("\nData: ", data, "\n")
         
         return data
