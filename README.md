@@ -64,9 +64,8 @@ url = make_url(endpoint="graphsql://your-graphql-endpoint.com?auth=<>")
 
 - ✅ SQLAlchemy dialect support
 - ✅ Superset compatibility
-- ⏳ Advanced introspection for schema validation
-- ⏳ Incremental data filling
-- ⏳ Support for multi-line SQL
-- ⏳ Support for more SQL syntax
+- ✅ Advanced introspection for schema validation
+- ✅ Support for multi-line SQL
+- ⏳ Support for more SQL features
 - ⏳ Argument validation, filter, and conditional validation
-- ⏳ Add support for more Superset features with DBAPI
+- ⏳ Support for more Superset features
