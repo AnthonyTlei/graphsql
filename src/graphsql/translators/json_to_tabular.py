@@ -114,6 +114,18 @@ class JSONToTabular:
             for agg_key, agg_value in aggregation_results.items():
                 df[agg_key] = agg_value
                 
+        order_by_col = data.get("order_by_col", None)
+        order_by_dir = data.get("order_by_dir", None)
+        if order_by_col and order_by_col:
+            ascending = order_by_dir.upper() == "ASC"
+            
+            df_col = order_by_col
+            for col in df.columns.tolist():
+                if order_by_col in col:
+                    df_col = col
+                break
+            df = df.sort_values(by=df_col, ascending=ascending)
+            
         limit = data.get("limit")
         if limit:
             try:

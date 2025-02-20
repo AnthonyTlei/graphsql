@@ -250,17 +250,14 @@ class SQLParser:
 
             # ORDER BY
             if t.ttype is Keyword and upper_val == "ORDER BY":
-                if (i+1) < len(tokens):
-                    order_token = tokens[i+1]
-                    parts = order_token.value.split()
-                    if len(parts) == 2:
-                        field, direction = parts
-                    elif len(parts) > 0:
-                        field, direction = parts[0], "ASC"
-                    else:
-                        field, direction = ("", "")
-                    sql_structure["order_by"] = f"{field}: {direction.upper()}"
-                i += 2
+                j = i + 1
+                while j < len(tokens) and tokens[j].ttype in Whitespace:
+                    j += 1
+                if j < len(tokens):
+                    limit_token = tokens[j]
+                    sql_structure["order_by"] = limit_token.value.strip()
+
+                i = j + 1
                 continue
 
             # LIMIT
@@ -271,7 +268,6 @@ class SQLParser:
                 if j < len(tokens):
                     limit_token = tokens[j]
                     sql_structure["limit"] = limit_token.value.strip()
-                    print("LIMIT VALUE:", sql_structure["limit"])
 
                 i = j + 1
                 continue
@@ -431,6 +427,20 @@ class SQLParser:
 
         return aggregation_queries
 
+    def _validate_order_by(self, sql_structure): 
+        order = sql_structure.get("order_by", None)
+        if not order:
+            return (None, None)
+        parts = order.split()
+        column = parts[0] if len(parts) > 0 else None
+        direction = parts[1].upper() if len(parts) > 1 else "ASC"
+        fields = sql_structure.get("fields", [])
+        if column not in fields:
+            return (None, None)
+        if not direction or direction.upper() not in {"ASC", "DESC"}:
+            direction = "ASC"
+        return (column, direction)
+
     def _resolve_graphql_structure(self, graphql_table, graphql_fields, conditions_str):
         """Build the final GraphQL query string."""
         
@@ -514,12 +524,14 @@ class SQLParser:
             conditions = real_data["conditions"]
             limit = sql_data["limit"] or real_data["limit"]
             aggregations = sql_data["aggregations"]
+            order_by = sql_data["order_by"]
         else:
             table = sql_data["table"]
             fields = sql_data["fields"]
             conditions = sql_data["conditions"]
             limit = sql_data["limit"]
             aggregations = sql_data["aggregations"]
+            order_by = sql_data["order_by"]
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
         graphql_fields = self._parse_fields_with_nesting(fields, singular_table)
@@ -536,9 +548,13 @@ class SQLParser:
         aggregation_queries = self._generate_aggregation_queries(sql_data)
         result_queries.extend(aggregation_queries)
         
+        order_by_column, order_by_direction = self._validate_order_by(sql_data)
+        
         data = {
             "queries": result_queries,
-            "limit": limit
+            "limit": limit,
+            "order_by_col": order_by_column,
+            "order_by_dir": order_by_direction
         }
-
+        
         return data
