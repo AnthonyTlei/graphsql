@@ -4,7 +4,7 @@ import os
 import requests
 
 class DataFetch:
-    def __init__(self, endpoint, output_dir="root/data/"):
+    def __init__(self, endpoint, output_dir="data/"):
         self.endpoint = endpoint
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)

@@ -2,6 +2,7 @@ import os
 import json
 import hashlib
 import pandas as pd
+import numpy as np
 
 class JSONToTabular:
     """
@@ -66,7 +67,7 @@ class JSONToTabular:
 
     def convert(self, json_paths):
         """
-        Converts multiple JSON files to a single tabular format.
+        Converts multiple JSON files to a single tabular format, handling aggregations.
         :param json_paths: List of paths to JSON files containing GraphQL responses.
         :return: Path of the saved combined tabular file.
         """
@@ -76,6 +77,7 @@ class JSONToTabular:
         
         combined_records = []
         valid_paths = []
+        aggregation_results = {}
 
         for json_path in json_paths:
             if not json_path or not os.path.exists(json_path):
@@ -90,22 +92,25 @@ class JSONToTabular:
             if "data" not in data:
                 raise ValueError(f"Invalid GraphQL response format in {json_path}: 'data' field missing.")
 
-            operation = data.get("operation", "DISPLAY")  # Default to DISPLAY if not present
+            operation = data.get("operation", "DISPLAY")
 
             for key, value in data["data"].items():
                 flattened_data = self.flatten_json(value, parent_key=key)
-                
-                # Add operation as a column for tracking if it's not DISPLAY
-                if operation != "DISPLAY":
-                    for record in flattened_data:
-                        record["operation"] = operation
 
-                combined_records.extend(flattened_data)
+                if operation == "DISPLAY":
+                    combined_records.extend(flattened_data)
+                else:
+                    self._process_aggregation(operation, flattened_data, aggregation_results)
 
-        if not combined_records:
+        if not combined_records and not aggregation_results:
             raise ValueError("Flattening resulted in an empty DataFrame. Check input JSON structure.")
 
         df = pd.DataFrame(combined_records)
+
+        # Merge aggregation results into every row
+        if aggregation_results:
+            for agg_key, agg_value in aggregation_results.items():
+                df[agg_key] = agg_value  # Assign the same aggregation value to all rows
 
         output_filename = self._generate_output_filename(valid_paths)
         output_path = os.path.join(self.output_dir, output_filename)
@@ -121,3 +126,47 @@ class JSONToTabular:
 
         print(f"✅ Combined data saved to {output_path}")
         return output_path
+
+    def _process_aggregation(self, operation, data, aggregation_results):
+        """
+        Processes aggregation functions like COUNT, SUM, AVG, MIN, MAX.
+        :param operation: Aggregation type (e.g., COUNT, SUM, AVG).
+        :param data: Flattened JSON data extracted from GraphQL response.
+        :param aggregation_results: Dictionary storing computed aggregation results.
+        """
+        if not data:
+            return
+
+        def extract_scalar_field(record):
+            """
+            Recursively extracts the deepest scalar field from nested JSON.
+            Assumes that only one scalar value exists per record.
+            """
+            if isinstance(record, dict):
+                for key, value in record.items():
+                    return extract_scalar_field(value)  # Recursively go deeper
+            elif isinstance(record, list) and record:
+                return extract_scalar_field(record[0])  # Take first item in lists
+            else:
+                return record  # Base case: return the scalar value
+
+        values = [extract_scalar_field(record) for record in data]
+
+        first_key = list(data[0].keys())[0]
+        field_name = first_key.replace(".", "_")
+
+        numeric_values = np.array([v for v in values if isinstance(v, (int, float))], dtype=float)
+
+        # Perform the aggregation
+        if operation == "COUNT":
+            print("COUNT: ", len(values))
+            print("COLUMN: ", f"{operation}({first_key})")
+            aggregation_results[f"{operation}({first_key})"] = len(values)
+        elif operation == "SUM":
+            aggregation_results[f"{operation}({first_key})"] = np.nansum(numeric_values)
+        elif operation == "AVG":
+            aggregation_results[f"{operation}({first_key})"] = np.nanmean(numeric_values) if len(numeric_values) > 0 else None
+        elif operation == "MIN":
+            aggregation_results[f"{operation}({first_key})"] = np.nanmin(numeric_values) if len(numeric_values) > 0 else None
+        elif operation == "MAX":
+            aggregation_results[f"{operation}({first_key})"] = np.nanmax(numeric_values) if len(numeric_values) > 0 else None

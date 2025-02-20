@@ -55,15 +55,15 @@ class GraphSQLCursor:
         self._load_results(tabular_file_path)
 
     def _load_results(self, file_path):
-        """Loads the tabular data from file into memory."""
+        """Loads the tabular data from file into memory and ensures Superset recognizes aggregation columns."""
         import pandas as pd
         
         if not file_path:
             self._results = []
             self._description = []
             return
-    
         
+        # Load the file based on format
         if self.output_format == "csv":
             df = pd.read_csv(file_path)
         elif self.output_format == "parquet":
@@ -73,8 +73,17 @@ class GraphSQLCursor:
         else:
             raise ValueError(f"Unsupported format: {self.output_format}")
 
+        # Ensure aggregation column names match what Superset expects
+        df.columns = [col.replace("(", "_").replace(")", "").replace(".", "_") for col in df.columns]
+
+        # Store results in a structured format
         self._results = df.to_records(index=False)
+
+        # Ensure Superset knows these columns exist
         self._description = [(col, None) for col in df.columns]
+
+        print("\n✅ Loaded Results (Columns):", df.columns)
+        print(df.head())  # Show data preview
 
     def fetchall(self):
         """Returns all rows of the last executed query."""

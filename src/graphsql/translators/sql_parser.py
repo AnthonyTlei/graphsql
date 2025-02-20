@@ -33,7 +33,8 @@ class SQLParser:
             "subquery": None,
             "conditions": [],
             "order_by": None,
-            "limit": None
+            "limit": None,
+            "aggregations": [],
         }
 
         # 1) Identify operation (e.g. SELECT, UPDATE, etc.)
@@ -54,6 +55,9 @@ class SQLParser:
 
         # 4) Extract WHERE, ORDER BY, LIMIT
         self._extract_where_order_limit(statement, sql_structure)
+        
+        # 5) Extract aggregations
+        self._extract_aggregations(sql_structure)
 
         print("Parsed SQL Structure: ", sql_structure)
         return sql_structure
@@ -377,6 +381,41 @@ class SQLParser:
         else:
             return ""
 
+    def _generate_aggregation_queries(self, aggregations):
+        aggregation_queries = []
+
+        def _construct_graphql_fields(fields):
+            """
+            Recursively constructs nested GraphQL fields.
+            Example: ['media', 'id'] -> '{ media { id } }'
+            """
+            if not fields:
+                return ""
+
+            field = fields[0]
+            if len(fields) == 1:
+                return f"{{ {field} }}"
+
+            return f"{{ {field} {_construct_graphql_fields(fields[1:])} }}"
+
+        for agg in aggregations:
+            function, column = agg
+            column = column.strip('"')
+            parts = column.split(".")
+
+            if len(parts) > 1:
+                table, nested_fields = parts[0], parts[1:]
+            else:
+                table, nested_fields = None, parts
+
+            if table and table in self.mappings:
+                graphql_table, _ = self._resolve_table_mapping(table)
+                nested_field_str = _construct_graphql_fields(nested_fields)
+                query = f'query {graphql_table} {{ {graphql_table} {nested_field_str} }}'
+                aggregation_queries.append((query, function.upper()))
+
+        return aggregation_queries
+
     def _resolve_graphql_structure(self, graphql_table, graphql_fields, conditions_str):
         """Build the final GraphQL query string."""
         
@@ -430,6 +469,17 @@ class SQLParser:
         # If we get here, table not found
         raise ValueError(f"Unknown table: {table}")
 
+    def _extract_aggregations(self, sql_structure):
+        """Extracts aggregation functions like COUNT, AVG, MIN, MAX and returns structured aggregation queries."""
+        aggregation_pattern = re.compile(r"(COUNT|AVG|SUM|MIN|MAX)\s*\(\s*(.*?)\s*\)", re.IGNORECASE)
+        fields = sql_structure["fields"]
+        for field in fields:
+            match = aggregation_pattern.match(field)
+            if match:
+                function, column = match.groups()
+                column = column.strip('"')
+                sql_structure["aggregations"].append((function, column))
+        
     def convert_to_graphql(self, sql_query):
         """
         Main method: parse the SQL, then convert to GraphQL.
@@ -438,6 +488,7 @@ class SQLParser:
         """
         print("Raw SQL Query: ", sql_query)
         sql_data = self.parse_sql(sql_query)
+        print("SQL Structure: ", sql_data)
         result_queries = []
 
         # If there's a subquery, override table/fields with subquery data
@@ -447,11 +498,13 @@ class SQLParser:
             fields = real_data["fields"]
             conditions = real_data["conditions"]
             limit = sql_data["limit"] or real_data["limit"]
+            aggregations = sql_data["aggregations"]
         else:
             table = sql_data["table"]
             fields = sql_data["fields"]
             conditions = sql_data["conditions"]
             limit = sql_data["limit"]
+            aggregations = sql_data["aggregations"]
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
         graphql_fields = self._parse_fields_with_nesting(fields, singular_table)
@@ -463,5 +516,8 @@ class SQLParser:
         
         query_tuple = (graphql_query, "DISPLAY")
         result_queries.append(query_tuple)
+        
+        aggregation_queries = self._generate_aggregation_queries(aggregations)
+        result_queries.extend(aggregation_queries)
 
         return result_queries
