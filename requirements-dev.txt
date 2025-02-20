@@ -5,3 +5,4 @@ pandas
 pyarrow
 sqlalchemy
 build
+duckdb

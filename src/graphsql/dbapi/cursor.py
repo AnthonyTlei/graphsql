@@ -1,6 +1,7 @@
 from graphsql.translators.sql_parser import SQLParser
 from graphsql.datafetch.data_fetch import DataFetch
 from graphsql.translators.json_to_tabular import JSONToTabular
+from graphsql.dbapi.duckdb import DuckDBSingleton
 
 import hashlib
 from urllib.parse import urlparse
@@ -55,26 +56,27 @@ class GraphSQLCursor:
         self._load_results(tabular_file_path)
 
     def _load_results(self, file_path):
-        """Loads the tabular data from file into memory and ensures Superset recognizes aggregation columns."""
-        import pandas as pd
+        """Loads the tabular data into the shared DuckDB database for efficient querying."""
         
         if not file_path:
             self._results = []
             self._description = []
             return
         
+        con = DuckDBSingleton.get_connection()  
+
         if self.output_format == "csv":
-            df = pd.read_csv(file_path)
+            con.execute(f"CREATE TABLE IF NOT EXISTS virtual_table AS SELECT * FROM read_csv_auto('{file_path}')")
         elif self.output_format == "parquet":
-            df = pd.read_parquet(file_path)
+            con.execute(f"CREATE TABLE IF NOT EXISTS virtual_table AS SELECT * FROM read_parquet('{file_path}')")
         elif self.output_format == "jsonl":
-            df = pd.read_json(file_path, lines=True)
+            con.execute(f"CREATE TABLE IF NOT EXISTS virtual_table AS SELECT * FROM read_json_auto('{file_path}')")
         else:
             raise ValueError(f"Unsupported format: {self.output_format}")
 
-        # df.columns = [col.replace("(", "_").replace(")", "").replace(".", "_") for col in df.columns]
-        
-        self._results = df.to_records(index=False)
+        df = con.execute("SELECT * FROM virtual_table LIMIT 5").fetchdf()
+
+        self._results = con.execute("SELECT * FROM virtual_table").fetchall()
         self._description = [(col, None) for col in df.columns]
 
         print("\n✅ Loaded Results (Columns):", df.columns)

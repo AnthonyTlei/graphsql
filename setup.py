@@ -20,7 +20,8 @@ setup(
         "pandas",
         "pyarrow",
         "requests",
-        "sqlparse"
+        "sqlparse",
+        "duckdb"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -3,3 +3,4 @@ pandas
 pyarrow
 requests
 sqlparse
+duckdb
