@@ -152,75 +152,89 @@ class SQLParser:
         tokens = statement.tokens
 
         for i, token in enumerate(tokens):
+            print("Token: ", token.value)
+
             # If we see "FROM", the next token(s) describe the table or subquery
             if token.ttype is Keyword and token.value.upper() == "FROM":
+                print(" FROM detected")
                 from_seen = True
                 continue
 
             if from_seen:
-                # 1) If it's a Parenthesis => subquery
+                # If it's a Parenthesis, it's a direct subquery
                 if isinstance(token, Parenthesis):
+                    print(" Parenthesis detected")
                     inner_sql = token.value.strip("()")
                     sql_structure["subquery"] = self._parse_subquery(inner_sql)
                     self._maybe_extract_alias(tokens, i+1, sql_structure)
                     break
 
-                # 2) If it's an Identifier
+                # Handle case where subquery is inside an Identifier
                 elif isinstance(token, Identifier):
+                    print(" Identifier detected")
                     val = token.value.strip()
+                    
+                    # subquery Identifier
                     if "(" in val and ")" in val:
+                        print(" Detected Subquery inside Identifier")
                         self._handle_subquery_in_identifier(val, sql_structure)
                     else:
+                        # Table name
                         sql_structure["table"] = token.get_real_name()
                         if token.get_alias():
                             sql_structure["alias"] = token.get_alias()
                     break
 
-                # 3) If it's an IdentifierList => multiple tables
+                # Multiple tables (IdentifierList)
                 elif isinstance(token, IdentifierList):
+                    print(" IdentifierList detected")
                     first_id = list(token.get_identifiers())[0]
                     sql_structure["table"] = first_id.get_real_name()
                     if first_id.get_alias():
                         sql_structure["alias"] = first_id.get_alias()
                     break
 
-                # 4) If it's a token with ttype=None, sometimes it's just the bare table name
+                # Single Table
                 elif token.ttype is None:
+                    print(" Random token detected")
                     raw_val = token.value.strip()
-                    # Could contain subquery too if it has parentheses
                     if "(" in raw_val and ")" in raw_val:
+                        print(" Detected Subquery in Random Token")
                         self._handle_subquery_in_identifier(raw_val, sql_structure)
                     else:
                         sql_structure["table"] = raw_val
                     self._maybe_extract_alias(tokens, i+1, sql_structure)
                     break
 
-                # If none of these matched, we keep going or break
-
     def _handle_subquery_in_identifier(self, identifier_value, sql_structure):
         """
-        Some queries come in as a single Identifier with parentheses, e.g.:
-          "(SELECT media.id FROM Page ) AS virtual_table"
-        We'll manually extract the subquery portion and alias.
+        Handles subqueries appearing inside an Identifier with parentheses.
+
+        Example:
+        "(SELECT media.id FROM Page ) AS virtual_table"
+        Extracts:
+        - The subquery inside `()`
+        - The alias `virtual_table` (if present)
         """
-        # A naive split by ')' to separate subquery from alias
-        match = re.match(r"\((.*?)\)\s*(?:AS\s+)?(\S+)?", identifier_value, flags=re.IGNORECASE | re.DOTALL)
+        print("     Treating subquery statement: ", identifier_value)
+
+        # ✅ Updated regex: Capture full subquery even with newlines
+        match = re.match(r"^\(\s*(SELECT\s+.*)\)\s*(?:AS\s+([\w\d_]+))?$", identifier_value, flags=re.IGNORECASE | re.DOTALL)
+
         if match:
-            subquery_sql = match.group(1)
+            subquery_sql = match.group(1).strip()
             possible_alias = match.group(2)
 
-            subquery_sql = subquery_sql.strip()
             if subquery_sql:
+                print("     Subquery parsing:", subquery_sql)
                 sql_structure["subquery"] = self._parse_subquery(subquery_sql)
 
             if possible_alias:
-                possible_alias = possible_alias.strip(' "')
-                sql_structure["alias"] = possible_alias
-                sql_structure["table"] = possible_alias
-
+                print("     Possible alias detected:", possible_alias)
+                sql_structure["alias"] = possible_alias.strip()
+                sql_structure["table"] = possible_alias.strip()
         else:
-            # If we can't parse it, fallback to treating as table?
-            # This is a fallback; 
+            print("     Subquery is table")
             sql_structure["table"] = identifier_value.strip()
 
     def _maybe_extract_alias(self, tokens, start_index, sql_structure):
