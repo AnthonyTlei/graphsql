@@ -30,23 +30,30 @@ class SQLPostProcessor:
             select_clauses = [f'{agg}("{col}") AS {agg.lower()}_{col.replace(".", "_")}' for agg, col in self.filters["aggregations"]]
 
         if self.filters.get("group_by"):
-            group_by_col = self.filters["group_by"]
-            group_by_col = f'"{group_by_col}"'
-            select_clauses.insert(0, group_by_col)
-            group_by_clause = f"GROUP BY {group_by_col}"
+            group_by_raw = self.filters["group_by"].strip()
+
+            group_by_columns = []
+
+            if "," in group_by_raw:
+                group_by_columns = [col.strip() for col in group_by_raw.split(",")]
+            else:
+                group_by_columns = [group_by_raw]
+
+            parsed_group_by_columns = []
+
+            for col in group_by_columns:
+                match = re.match(r'(\w+)\(([\w\d\.\*]+)\)', col)
+                if match:
+                    agg_func, field_name = match.groups()
+                    parsed_group_by_columns.append(f'{agg_func}("{field_name}")')
+                else:
+                    parsed_group_by_columns.append(f'"{col}"')
+
+            group_by_clause = f"GROUP BY {', '.join(parsed_group_by_columns)}"
             
-        # if self.filters.get("order_by"):
-        #     order_col = self.filters["order_by"]
-        #     order_dir = self.filters.get("order_by_direction", "ASC")
-
-        #     match = re.match(r'(\w+)\(([\w\d\.\*]+)\)', order_col)
-        #     if match:
-        #         agg_func, field_name = match.groups()
-        #         order_col = f'{agg_func}("{field_name}")'
-        #     else:
-        #         order_col = f'"{order_col}"'
-
-        #     order_by_clause = f"ORDER BY {order_col} {order_dir}"
+            for col in parsed_group_by_columns:
+                if col not in select_clauses:
+                    select_clauses.insert(0, col)
             
         if self.filters.get("order_by"):
             order_col = self.filters["order_by"]

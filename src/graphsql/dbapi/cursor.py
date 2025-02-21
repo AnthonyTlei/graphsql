@@ -49,6 +49,7 @@ class GraphSQLCursor:
             json_files_path = DataFetch(self.endpoint).fetch_data(queries)
 
         JSONToTabular(output_format="duckdb", depth_cutoff=5).convert(json_paths=json_files_path)
+        self._load_results("virtual_table")
 
         sql_post_processor = SQLPostProcessor(filters)
         result_df = sql_post_processor.execute()
