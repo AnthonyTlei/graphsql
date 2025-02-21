@@ -70,29 +70,52 @@ class SQLParser:
         select_seen = False
         
         for token in statement.tokens:
+            print("TOKEN: ", token)
             # Check if the token is the "SELECT" keyword
             if token.ttype is DML and token.value.upper() == "SELECT":
+                print(" Select Seen")
                 select_seen = True
                 continue
-
+            
             if select_seen:
-                # If we hit FROM or another top-level keyword, we stop gathering fields
                 if (token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT", "GROUP BY"]) \
                    or token.is_group and isinstance(token, Parenthesis):
+                    print(" Breaking")
                     break
+                
+                # If aggregation function
+                if isinstance(token, Function):
+                    print(" Aggregation Function Found")
+                    func_name = token.get_real_name()
+                    if func_name and func_name.upper() in AGGREGATION_FUNCTIONS:
+                        match = re.match(r'(\w+)\(([\w\d\.\*]+)\)', token.value.strip())
+                        if match:
+                            agg_func, agg_field = match.groups()
+                            sql_structure["aggregations"].append((agg_func.upper(), agg_field))
+                        else:
+                            sql_structure["aggregations"].append((func_name.upper(), token.value.strip()))
+                        continue
                 
                 # If it's a comma-separated list of fields
                 if isinstance(token, IdentifierList):
+                    print(" IdentifierList")
                     for identifier in token.get_identifiers():
+                        print("     Single identifier: ", identifier.value.strip())
                         self._handle_single_field(identifier.value.strip(), sql_structure)
+                        
                 # If it's a single field (Identifier)
                 elif isinstance(token, Identifier):
+                    print(" Identifier")
                     self._handle_single_field(token.value.strip(), sql_structure)
+                    
                 # If it's a wildcard
                 elif token.ttype is Wildcard:
+                    print(" Wildcard")
                     sql_structure["fields"].append("*")
+                
+                # Fallback
                 else:
-                    # Possibly a text token that includes multiple fields
+                    print(" Else")
                     raw_val = token.value.strip()
                     if raw_val:
                         for f in raw_val.split(","):
@@ -377,8 +400,17 @@ class SQLParser:
             return parsed_fields
 
         if aggregations:
-            for agg_func, agg_field in aggregations:
-                fields.append(agg_field)
+            for agg in aggregations:
+                if isinstance(agg, tuple) and len(agg) == 2:
+                    agg_func, agg_field = agg
+                elif isinstance(agg, str):
+                    match = re.match(r'(\w+)\(([\w\d\.\*]+)\)', agg)
+                    if match:
+                        agg_func, agg_field = match.groups()
+                    else:
+                        agg_func, agg_field = None, agg
+                if agg_field:
+                    fields.append(agg_field)
 
         if "*" in fields:
             if table in self.mappings:
