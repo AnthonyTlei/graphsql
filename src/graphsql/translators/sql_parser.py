@@ -519,6 +519,7 @@ class SQLParser:
         
         print("Parsed SQL: ", sql_data)
         table = sql_data["table"]
+        alias = sql_data.get("alias", None)
         fields = sql_data["fields"]
         conditions = sql_data["conditions"]
         limit = sql_data["limit"]
@@ -568,7 +569,8 @@ class SQLParser:
         data = {
             "queries": result_queries,
             "filters": filters_data,
-            "subquery_filters": subquery_filters_data
+            "subquery_filters": subquery_filters_data,
+            "subquery_alias": alias
         }
         print("\nData: ", data, "\n")
         
