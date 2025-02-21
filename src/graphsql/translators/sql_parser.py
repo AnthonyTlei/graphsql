@@ -70,22 +70,18 @@ class SQLParser:
         select_seen = False
         
         for token in statement.tokens:
-            print("TOKEN: ", token)
             # Check if the token is the "SELECT" keyword
             if token.ttype is DML and token.value.upper() == "SELECT":
-                print(" Select Seen")
                 select_seen = True
                 continue
             
             if select_seen:
                 if (token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT", "GROUP BY"]) \
                    or token.is_group and isinstance(token, Parenthesis):
-                    print(" Breaking")
                     break
                 
                 # If aggregation function
                 if isinstance(token, Function):
-                    print(" Aggregation Function Found")
                     func_name = token.get_real_name()
                     if func_name and func_name.upper() in AGGREGATION_FUNCTIONS:
                         match = re.match(r'(\w+)\(([\w\d\.\*]+)\)', token.value.strip())
@@ -98,24 +94,19 @@ class SQLParser:
                 
                 # If it's a comma-separated list of fields
                 if isinstance(token, IdentifierList):
-                    print(" IdentifierList")
                     for identifier in token.get_identifiers():
-                        print("     Single identifier: ", identifier.value.strip())
                         self._handle_single_field(identifier.value.strip(), sql_structure)
                         
                 # If it's a single field (Identifier)
                 elif isinstance(token, Identifier):
-                    print(" Identifier")
                     self._handle_single_field(token.value.strip(), sql_structure)
                     
                 # If it's a wildcard
                 elif token.ttype is Wildcard:
-                    print(" Wildcard")
                     sql_structure["fields"].append("*")
                 
                 # Fallback
                 else:
-                    print(" Else")
                     raw_val = token.value.strip()
                     if raw_val:
                         for f in raw_val.split(","):
@@ -150,20 +141,18 @@ class SQLParser:
         """
         from_seen = False
         tokens = statement.tokens
+        print("Extracting from statement: ", str(statement))
 
         for i, token in enumerate(tokens):
-            print("Token: ", token.value)
 
             # If we see "FROM", the next token(s) describe the table or subquery
             if token.ttype is Keyword and token.value.upper() == "FROM":
-                print(" FROM detected")
                 from_seen = True
                 continue
 
             if from_seen:
                 # If it's a Parenthesis, it's a direct subquery
                 if isinstance(token, Parenthesis):
-                    print(" Parenthesis detected")
                     inner_sql = token.value.strip("()")
                     sql_structure["subquery"] = self._parse_subquery(inner_sql)
                     self._maybe_extract_alias(tokens, i+1, sql_structure)
@@ -171,12 +160,9 @@ class SQLParser:
 
                 # Handle case where subquery is inside an Identifier
                 elif isinstance(token, Identifier):
-                    print(" Identifier detected")
                     val = token.value.strip()
-                    
                     # subquery Identifier
                     if "(" in val and ")" in val:
-                        print(" Detected Subquery inside Identifier")
                         self._handle_subquery_in_identifier(val, sql_structure)
                     else:
                         # Table name
@@ -187,7 +173,6 @@ class SQLParser:
 
                 # Multiple tables (IdentifierList)
                 elif isinstance(token, IdentifierList):
-                    print(" IdentifierList detected")
                     first_id = list(token.get_identifiers())[0]
                     sql_structure["table"] = first_id.get_real_name()
                     if first_id.get_alias():
@@ -196,10 +181,8 @@ class SQLParser:
 
                 # Single Table
                 elif token.ttype is None:
-                    print(" Random token detected")
                     raw_val = token.value.strip()
                     if "(" in raw_val and ")" in raw_val:
-                        print(" Detected Subquery in Random Token")
                         self._handle_subquery_in_identifier(raw_val, sql_structure)
                     else:
                         sql_structure["table"] = raw_val
@@ -211,26 +194,40 @@ class SQLParser:
         Handles subqueries appearing inside an Identifier with parentheses.
 
         Example:
-        "(SELECT media.id FROM Page ) AS virtual_table"
+            "(SELECT media.id FROM Page ) AS virtual_table"
         Extracts:
-        - The subquery inside `()`
-        - The alias `virtual_table` (if present)
+            - The subquery inside `()`
+            - The alias `virtual_table` (if present)
         """
-        print("     Treating subquery statement: ", identifier_value)
-
-        # ✅ Updated regex: Capture full subquery even with newlines
         match = re.match(r"^\(\s*(SELECT\s+.*)\)\s*(?:AS\s+([\w\d_]+))?$", identifier_value, flags=re.IGNORECASE | re.DOTALL)
-
         if match:
             subquery_sql = match.group(1).strip()
             possible_alias = match.group(2)
-
             if subquery_sql:
-                print("     Subquery parsing:", subquery_sql)
-                sql_structure["subquery"] = self._parse_subquery(subquery_sql)
-
+                parsed_statements = sqlparse.parse(subquery_sql)
+                if parsed_statements:
+                    subquery_structure = {
+                        "operation": None,
+                        "fields": [],
+                        "table": None,
+                        "conditions": [],
+                        "order_by": None,
+                        "limit": None,
+                        "aggregations": [],
+                    }
+                    statement = parsed_statements[0]
+                    statement_type = statement.get_type()
+                    if statement_type.upper() == "SELECT":
+                        subquery_structure["operation"] = "SELECT"
+                    else:
+                        first_token = statement.tokens[0] if statement.tokens else None
+                        if first_token and first_token.ttype is DML:
+                            subquery_structure["operation"] = first_token.value.upper()
+                    self._extract_fields(statement, subquery_structure)
+                    self._extract_from_part(statement, subquery_structure)
+                    self._extract_keywords(statement, subquery_structure)
+                    sql_structure["subquery"] = subquery_structure
             if possible_alias:
-                print("     Possible alias detected:", possible_alias)
                 sql_structure["alias"] = possible_alias.strip()
                 sql_structure["table"] = possible_alias.strip()
         else:
@@ -337,74 +334,6 @@ class SQLParser:
                 continue
 
             i += 1
-
-    def _parse_subquery(self, subquery_string):
-        """
-        Parses the contents of a subquery 'SELECT ... FROM ...' into a structure.
-        We do a simplified parse. You can expand it to handle WHERE, etc.
-        """
-        sub_statement = sqlparse.parse(subquery_string)[0]
-
-        sub_structure = {
-            "operation": None,
-            "fields": [],
-            "table": None,
-            "conditions": [],
-            "order_by": None,
-            "limit": None
-        }
-
-        # Identify operation
-        if sub_statement.get_type().upper() == "SELECT":
-            sub_structure["operation"] = "SELECT"
-        else:
-            # fallback
-            first_token = sub_statement.tokens[0] if sub_statement.tokens else None
-            if first_token and first_token.ttype is DML:
-                sub_structure["operation"] = first_token.value.upper()
-
-        # Extract fields (everything between SELECT and FROM)
-        select_seen = False
-        for token in sub_statement.tokens:
-            if token.ttype is DML and token.value.upper() == "SELECT":
-                select_seen = True
-                continue
-
-            if select_seen:
-                if token.ttype is Keyword and token.value.upper() in ["FROM","WHERE","ORDER BY","LIMIT"]:
-                    break
-
-                if isinstance(token, IdentifierList):
-                    for ident in token.get_identifiers():
-                        sub_structure["fields"].append(ident.value.strip())
-                elif isinstance(token, Identifier):
-                    sub_structure["fields"].append(token.value.strip())
-                elif token.ttype is Wildcard:
-                    sub_structure["fields"].append("*")
-                else:
-                    raw_val = token.value.strip()
-                    if raw_val:
-                        for f in raw_val.split(","):
-                            f_clean = f.strip()
-                            if f_clean:
-                                sub_structure["fields"].append(f_clean)
-
-        # Extract table name after FROM
-        from_seen = False
-        tokens = sub_statement.tokens
-        for i, t in enumerate(tokens):
-            if t.ttype is Keyword and t.value.upper() == "FROM":
-                from_seen = True
-                continue
-            if from_seen:
-                if isinstance(t, Identifier):
-                    sub_structure["table"] = t.get_real_name()
-                    break
-                elif t.ttype is None:
-                    sub_structure["table"] = t.value.strip()
-                    break
-
-        return sub_structure
 
     def _parse_fields_with_nesting(self, fields, table, aggregations=None):
         """Parses nested fields based on mappings, supporting aggregations."""
@@ -546,9 +475,8 @@ class SQLParser:
         if not table:
             return "Unknown", "Unknown"
 
-        # virtual_table shouldn't be reached as we handle subqueries in the parsing, so this is a fallback if parsing failed
         if table == "virtual_table":
-            raise ValueError("Something went wrong with parsing virtual_table")
+            return "virtual_table", "virtual_table"
 
         # Normal logic
         if table in self.mappings:
@@ -590,27 +518,39 @@ class SQLParser:
         result_queries = []
         
         print("Parsed SQL: ", sql_data)
-
-        if sql_data["subquery"]:
-            real_data = sql_data["subquery"]
-            table = real_data["table"]
-            subquery_fields = real_data["fields"]
-            conditions = real_data["conditions"]
-            limit = sql_data["limit"] or real_data["limit"]
-            aggregations = real_data.get("aggregations", [])
-            order_by = real_data.get("order_by", None)
-            group_by = real_data.get("group_by", None)
-        else:
-            table = sql_data["table"]
-            subquery_fields = sql_data["fields"]
-            conditions = sql_data["conditions"]
-            limit = sql_data["limit"]
-            aggregations = sql_data.get("aggregations", [])
-            order_by = sql_data.get("order_by", None)
-            group_by = sql_data.get("group_by", None)
+        table = sql_data["table"]
+        fields = sql_data["fields"]
+        conditions = sql_data["conditions"]
+        limit = sql_data["limit"]
+        aggregations = sql_data.get("aggregations", [])
+        order_by = sql_data.get("order_by", None)
+        group_by = sql_data.get("group_by", None)
+        order_by_column, order_by_direction = self._validate_order_by(sql_data)
+        filters_data = {
+            "limit": limit,
+            "order_by": order_by_column,
+            "order_by_direction": order_by_direction,
+            "group_by": group_by,
+            "aggregations": aggregations
+        }
+        
+        subquery_filters_data = {}
+        if sql_data["subquery"]:  
+            subquery_data = sql_data["subquery"]
+            subquery_filters_data = {
+                "limit": subquery_data.get("limit", None),
+                "order_by": subquery_data.get("order_by",None),
+                "order_by_direction": subquery_data.get("order_by_direction", None),
+                "group_by": subquery_data.get("group_by", None),
+                "aggregations": subquery_data.get("aggregations", None)
+            }
+            table = subquery_data["table"]
+            fields = subquery_data["fields"]
+            conditions = subquery_data["conditions"]
+            
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
-        graphql_fields = self._parse_fields_with_nesting(subquery_fields, singular_table, aggregations=aggregations)
+        graphql_fields = self._parse_fields_with_nesting(fields, singular_table, aggregations=aggregations)
         conditions_str = self._generate_conditions(conditions, singular_table)
 
         graphql_query = self._resolve_graphql_structure(
@@ -624,24 +564,12 @@ class SQLParser:
             aggregation_queries = self._generate_aggregation_queries(sql_data)
             result_queries.extend(aggregation_queries)
         
-        order_by_column, order_by_direction = self._validate_order_by(sql_data)
-
-        filters_data = {
-            "limit": limit,
-            "order_by": order_by_column,
-            "order_by_direction": order_by_direction,
-            "group_by": group_by,
-            "aggregations": aggregations
-        }
         
-        if sql_data["subquery"]:  
-            filters_data["fields"] = sql_data["fields"]
-
         data = {
             "queries": result_queries,
-            "filters": filters_data
+            "filters": filters_data,
+            "subquery_filters": subquery_filters_data
         }
-        
         print("\nData: ", data, "\n")
         
         return data
