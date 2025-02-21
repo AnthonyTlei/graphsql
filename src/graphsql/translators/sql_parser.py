@@ -545,11 +545,10 @@ class SQLParser:
         
         print("Parsed SQL: ", sql_data)
 
-        # If there's a subquery, override table/fields with subquery data
         if sql_data["subquery"]:
             real_data = sql_data["subquery"]
             table = real_data["table"]
-            fields = real_data["fields"]
+            subquery_fields = real_data["fields"]
             conditions = real_data["conditions"]
             limit = sql_data["limit"] or real_data["limit"]
             aggregations = real_data.get("aggregations", [])
@@ -557,7 +556,7 @@ class SQLParser:
             group_by = real_data.get("group_by", None)
         else:
             table = sql_data["table"]
-            fields = sql_data["fields"]
+            subquery_fields = sql_data["fields"]
             conditions = sql_data["conditions"]
             limit = sql_data["limit"]
             aggregations = sql_data.get("aggregations", [])
@@ -565,7 +564,7 @@ class SQLParser:
             group_by = sql_data.get("group_by", None)
 
         graphql_table, singular_table = self._resolve_table_mapping(table)
-        graphql_fields = self._parse_fields_with_nesting(fields, singular_table, aggregations=aggregations)
+        graphql_fields = self._parse_fields_with_nesting(subquery_fields, singular_table, aggregations=aggregations)
         conditions_str = self._generate_conditions(conditions, singular_table)
 
         graphql_query = self._resolve_graphql_structure(
@@ -580,16 +579,21 @@ class SQLParser:
             result_queries.extend(aggregation_queries)
         
         order_by_column, order_by_direction = self._validate_order_by(sql_data)
-                    
+
+        filters_data = {
+            "limit": limit,
+            "order_by": order_by_column,
+            "order_by_direction": order_by_direction,
+            "group_by": group_by,
+            "aggregations": aggregations
+        }
+        
+        if sql_data["subquery"]:  
+            filters_data["fields"] = sql_data["fields"]
+
         data = {
             "queries": result_queries,
-            "filters": {
-                "limit": limit,
-                "order_by": order_by_column,
-                "order_by_direction": order_by_direction,
-                "group_by": group_by,
-                "aggregations": aggregations
-            }
+            "filters": filters_data
         }
         
         print("\nData: ", data, "\n")
