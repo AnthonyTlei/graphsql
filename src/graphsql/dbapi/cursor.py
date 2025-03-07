@@ -51,7 +51,10 @@ class GraphSQLCursor:
                 auth_token=auth,
                 additional_headers=additional_headers
             ).fetch_data(graphql_queries)
-            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"], additional_headers=additional_headers).fetch_data(graphql_queries)
+            if auth:
+                json_files_path = DataFetch(self.endpoint, auth_token=auth, additional_headers=additional_headers).fetch_data(graphql_queries)
+            else:
+                json_files_path = DataFetch(self.endpoint, additional_headers=additional_headers).fetch_data(graphql_queries)
         else:
             json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
 
