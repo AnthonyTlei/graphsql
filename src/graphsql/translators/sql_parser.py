@@ -122,13 +122,21 @@ class SQLParser:
             function_name = match.group(1)
             field_inside_function = match.group(2)
             sql_structure["aggregations"].append((function_name.upper(), field_inside_function))
+            return
+
+        upper_field = field_string.upper()
+        """
+        This is a temporary fix because sqlparse has inconsistencies parsing alias. e.g key AS "key" is 3 Fallbacks inbstead of Indentifier/IdentifierList
+        """
+        alias_match = re.search(r'\s+AS\s+|\bAS\b', upper_field, flags=re.IGNORECASE)
+        if alias_match:
+            left_part = re.split(r'\s+AS\s+|\bAS\b', field_string, flags=re.IGNORECASE)[0]
+            field_clean = left_part.strip('"').strip()
         else:
-            upper_field = field_string.upper()
-            if "AS" in upper_field:
-                return
-            else:
-                field_clean = field_string.strip('"').strip()
-                sql_structure["fields"].append(field_clean)
+            field_clean = field_string.strip('"').strip()
+
+        if field_clean and field_clean not in sql_structure["fields"]:
+            sql_structure["fields"].append(field_clean)
 
     def _extract_from_part(self, statement, sql_structure):
         """
