@@ -224,18 +224,23 @@ class GraphSQLDialect(DefaultDialect):
         Example URL: graphsql://graphql-endpoint
         If ?is_http=1 is present in the URL's query string, then "http" will be used
         instead of "https".
+        All other query parameters (except 'auth' and 'is_http') are treated as headers.
         """
         is_http = url.query.get("is_http", "0")
         scheme = "http" if is_http == "1" else "https"
-        
+
         endpoint = f"{scheme}://{url.host}"
         if url.port:
             endpoint += f":{url.port}"
-        
+
         headers = {}
+        for key, value in url.query.items():
+            if key not in {"auth", "is_http"}:
+                headers[key] = value
+
         if "auth" in url.query:
             headers["Authorization"] = url.query["auth"]
-            
+
         return (endpoint,), {"headers": headers}
 
     def do_execute(self, cursor, statement, parameters, context=None):

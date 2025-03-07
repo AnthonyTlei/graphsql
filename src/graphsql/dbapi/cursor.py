@@ -42,8 +42,16 @@ class GraphSQLCursor:
         parsed_data = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
         graphql_queries = parsed_data.get("graphql_queries", "")
 
-        if self.headers and "Authorization" in self.headers:
-            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(graphql_queries)
+        
+        if self.headers:
+            auth = self.headers.get("Authorization", None)
+            additional_headers = {k: v for k, v in self.headers.items() if k not in {"Authorization", "is_http"}} if self.headers else {}
+            json_files_path = DataFetch(
+                self.endpoint,
+                auth_token=auth,
+                additional_headers=additional_headers
+            ).fetch_data(graphql_queries)
+            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"], additional_headers=additional_headers).fetch_data(graphql_queries)
         else:
             json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
 

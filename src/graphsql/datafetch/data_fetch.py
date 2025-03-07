@@ -4,10 +4,11 @@ import os
 import requests
 
 class DataFetch:
-    def __init__(self, endpoint, output_dir="data/", auth_token=None):
+    def __init__(self, endpoint, output_dir="data/", auth_token=None, additional_headers=[]):
         self.endpoint = endpoint
         self.output_dir = output_dir
         self.auth_token = auth_token
+        self.additional_headers = additional_headers
         os.makedirs(self.output_dir, exist_ok=True)
 
     def _generate_filename(self, query):
@@ -34,13 +35,20 @@ class DataFetch:
         for query in queries:
             payload = {"query": query}
             headers = {"Content-Type": "application/json"}
+
             if self.auth_token:
                 headers["Authorization"] = f"{self.auth_token}"
+
+            if self.additional_headers:
+                for key, value in getattr(self, "additional_headers", {}).items():
+                    headers[key] = value
+
+            print("Request: ", "Endpoint: ", self.endpoint, "Headers: ", headers, "Payload: ", payload)
             response = requests.post(
-                    self.endpoint,
-                    json=payload,
-                    headers=headers,
-                )
+                self.endpoint,
+                json=payload,
+                headers=headers,
+            )
             if response.status_code == 200:
                 result = response.json()
                 filepath = self._generate_filename(query)
