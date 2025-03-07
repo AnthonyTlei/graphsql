@@ -124,10 +124,8 @@ class SQLParser:
             sql_structure["aggregations"].append((function_name.upper(), field_inside_function))
         else:
             upper_field = field_string.upper()
-            if " AS " in upper_field:
-                left, right = re.split(r"\s+AS\s+", field_string, flags=re.IGNORECASE)
-                field_clean = left.strip('"').strip()
-                sql_structure["fields"].append(field_clean)
+            if "AS" in upper_field:
+                return
             else:
                 field_clean = field_string.strip('"').strip()
                 sql_structure["fields"].append(field_clean)
