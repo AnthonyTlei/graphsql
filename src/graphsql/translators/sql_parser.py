@@ -70,7 +70,6 @@ class SQLParser:
         select_seen = False
         
         for token in statement.tokens:
-            # Check if the token is the "SELECT" keyword
             if token.ttype is DML and token.value.upper() == "SELECT":
                 select_seen = True
                 continue
@@ -282,29 +281,35 @@ class SQLParser:
             # ORDER BY
             if t.ttype is Keyword and upper_val == "ORDER BY":
                 j = i + 1
-                
+
                 while j < len(tokens) and tokens[j].ttype in Whitespace:
                     j += 1
-                    
+
                 if j < len(tokens):
                     token = tokens[j]
-                    order_by = token.value.strip()
+                    order_by_clause = token.value.strip()
                     j += 1
+
+                    parts = order_by_clause.split()
                     
-                if len(order_by.split()) == 2:
-                    sql_structure["order_by"], sql_structure["order_by_direction"] = order_by.split()
-                    i = j + 1
-                    continue
-                else:
-                    sql_structure["order_by"] = order_by.strip()
-                
-                while j < len(tokens) and tokens[j].ttype in Whitespace:
-                    j += 1
-                
-                if j < len(tokens):
-                    token = tokens[j]
-                    dir = token.value.strip() if token.value.strip() in {"ASC", "DESC"} else "ASC"
-                    sql_structure["order_by_direction"] = dir
+                    if len(parts) == 2:
+                        column, direction = parts
+                    else:
+                        column = parts[0]
+                        while j < len(tokens) and tokens[j].ttype in Whitespace:
+                            j += 1
+                        if j < len(tokens):
+                            next_token = tokens[j].value.strip().upper()
+                            direction = next_token if next_token in {"ASC", "DESC"} else "ASC"
+                        else:
+                            direction = "ASC"
+
+                    if (column.startswith("'") and column.endswith("'")) or \
+                    (column.startswith('"') and column.endswith('"')):
+                        column = column[1:-1]
+
+                    sql_structure["order_by"] = column
+                    sql_structure["order_by_direction"] = direction
 
                 i = j + 1
                 continue
@@ -315,8 +320,14 @@ class SQLParser:
                 while j < len(tokens) and tokens[j].ttype in Whitespace:
                     j += 1
                 if j < len(tokens):
-                    limit_token = tokens[j]
-                    sql_structure["group_by"] = limit_token.value.strip()
+                    group_by_token = tokens[j]
+                    group_by_val = group_by_token.value.strip()
+
+                    if (group_by_val.startswith("'") and group_by_val.endswith("'")) or \
+                    (group_by_val.startswith('"') and group_by_val.endswith('"')):
+                        group_by_val = group_by_val[1:-1]
+
+                    sql_structure["group_by"] = group_by_val
 
                 i = j + 1
                 continue
@@ -567,8 +578,9 @@ class SQLParser:
         
         
         data = {
-            "queries": result_queries,
+            "graphql_queries": result_queries,
             "filters": filters_data,
+            "fields": sql_data['fields'],
             "subquery_filters": subquery_filters_data,
             "subquery_alias": alias
         }

@@ -40,22 +40,21 @@ class GraphSQLCursor:
         relations_path = f"schemas/relations_{endpoint_hash}.json"
 
         parsed_data = SQLParser(mappings_path=mappings_path, relations_path=relations_path).convert_to_graphql(statement)
-        queries = parsed_data.get("queries", [])
-        filters = parsed_data.get("filters", {})
+        graphql_queries = parsed_data.get("graphql_queries", "")
 
         if self.headers and "Authorization" in self.headers:
-            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(queries)
+            json_files_path = DataFetch(self.endpoint, auth_token=self.headers["Authorization"]).fetch_data(graphql_queries)
         else:
-            json_files_path = DataFetch(self.endpoint).fetch_data(queries)
+            json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
 
         JSONToTabular(output_format="duckdb", depth_cutoff=5).convert(json_paths=json_files_path)
-        self._load_results("virtual_table")
 
-        sql_post_processor = SQLPostProcessor(filters)
+        sql_post_processor = SQLPostProcessor(parsed_data)
         result_df = sql_post_processor.execute()
 
         self._results = result_df.to_records(index=False)
         self._description = [(col, None) for col in result_df.columns]
+        # self._load_results("virtual_table")
 
         print("\n✅ Final Processed Results (Columns):", result_df.columns)
         print(result_df.head())

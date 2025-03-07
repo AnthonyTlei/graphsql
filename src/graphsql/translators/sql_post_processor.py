@@ -6,20 +6,21 @@ class SQLPostProcessor:
     Applies remaining SQL filters (ORDER BY, GROUP BY, aggregations) on the DuckDB virtual_table.
     """
 
-    def __init__(self, filters):
+    def __init__(self, parsed_data):
         """
         Initializes the post-processor with filters extracted from SQLParser.
 
         Args:
             filters (dict): Remaining SQL filters (group_by, aggregations, order_by, limit, etc.).
         """
-        self.filters = filters
+        self.parsed_data = parsed_data
+        self.filters = parsed_data.get("filters", {})
         self.con = DuckDBSingleton.get_connection()
 
     def construct_query(self):
         """Constructs the final SQL query dynamically based on the filters."""
         
-        selected_fields = self.filters.get("fields", [])
+        selected_fields = self.parsed_data.get("fields", [])
         select_clauses = [f'"{field}"' for field in selected_fields] if selected_fields else []
 
         group_by_clause = ""
