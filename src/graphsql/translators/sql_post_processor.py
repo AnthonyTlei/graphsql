@@ -15,6 +15,7 @@ class SQLPostProcessor:
         """
         self.parsed_data = parsed_data
         self.filters = parsed_data.get("filters", {})
+        self.table_name = parsed_data.get("subquery_alias", "virtual_table")
         self.con = DuckDBSingleton.get_connection()
 
     def construct_query(self):
@@ -69,7 +70,7 @@ class SQLPostProcessor:
         if self.filters.get("limit"):
             limit_clause = f"LIMIT {self.filters['limit']}"
 
-        final_query = f"SELECT {', '.join(select_clauses)} FROM virtual_table {group_by_clause} {order_by_clause} {limit_clause}"
+        final_query = f"SELECT {', '.join(select_clauses)} FROM {self.table_name} {group_by_clause} {order_by_clause} {limit_clause}"
 
         print("Filters Query: ", final_query.strip())
         return final_query.strip()

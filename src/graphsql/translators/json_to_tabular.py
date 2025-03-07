@@ -12,7 +12,7 @@ class JSONToTabular:
     flattening nested structures and exploding lists into rows.
     """
 
-    def __init__(self, depth_cutoff=2, output_format="csv", output_dir="data"):
+    def __init__(self, depth_cutoff=2, output_format="csv", output_dir="data", table_name="virtual_table"):
         """
         Initialize the JSONToTabular processor.
         :param depth_cutoff: Maximum depth for flattening nested objects.
@@ -22,6 +22,7 @@ class JSONToTabular:
         self.depth_cutoff = depth_cutoff
         self.output_format = output_format.lower()
         self.output_dir = os.path.join(output_dir, "tabular")
+        self.table_name = table_name
         os.makedirs(self.output_dir, exist_ok=True)
         
     def flatten_json(self, obj, parent_key="", depth=0, root_key=None):
@@ -121,10 +122,10 @@ class JSONToTabular:
             df.to_json(output_path, orient="records", lines=True)
         elif self.output_format == "duckdb":
             con = DuckDBSingleton.get_connection()
-            con.execute("DROP TABLE IF EXISTS virtual_table")
-            con.execute("CREATE TABLE virtual_table AS SELECT * FROM df")
-            print("✅ Data stored in DuckDB's `virtual_table`")
-            return "virtual_table"
+            con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
+            con.execute(f"CREATE TABLE {self.table_name} AS SELECT * FROM df")
+            print(f"✅ Data stored in DuckDB's `{self.table_name}`")
+            return self.table_name
         else:
             raise ValueError("Unsupported output format.")
 
