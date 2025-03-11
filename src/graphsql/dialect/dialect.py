@@ -50,13 +50,25 @@ class GraphSQLDialect(DefaultDialect):
         - Scalar fields from `mappings.json` under "Query".
         - Complex fields from `relations.json` under "Query".
         """
+        print("Get Table Names: ")
+        
         endpoint_url = str(connection.engine.url)
         parsed_url = urlparse(endpoint_url)
+        
+        print(" URL: ", endpoint_url)
+        print(" Parsed URL: ", parsed_url)
+        print(" Parsed URL Scheme: ", parsed_url.scheme)
+        
         if parsed_url.scheme in ["http", "https", "graphsql"]:
-            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+            print(" Parsed URL netloc: ", parsed_url.netloc)
+            print(" Parsed URL path: ", parsed_url.path)
+            cleaned_endpoint = parsed_url.netloc
         else:
             cleaned_endpoint = endpoint_url
+            
+        print(" Cleaned Endpoint: ", cleaned_endpoint)
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
+        print(" Endpoint Hash: ", endpoint_hash)
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
         
@@ -121,7 +133,7 @@ class GraphSQLDialect(DefaultDialect):
         endpoint_url = str(connection.engine.url)
         parsed_url = urlparse(endpoint_url)
         if parsed_url.scheme in ["http", "https", "graphsql"]:
-            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+            cleaned_endpoint = parsed_url.netloc
         else:
             cleaned_endpoint = endpoint_url
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]

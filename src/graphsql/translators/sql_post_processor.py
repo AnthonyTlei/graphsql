@@ -15,15 +15,22 @@ class SQLPostProcessor:
         """
         self.parsed_data = parsed_data
         self.filters = parsed_data.get("filters", {})
-        self.table_name = parsed_data.get("subquery_alias", "virtual_table")
+        self.table_name = (
+            parsed_data.get("subquery_alias")
+            or parsed_data.get("table")
+            or "virtual_table"
+        )
         self.con = DuckDBSingleton.get_connection()
 
     def construct_query(self):
         """Constructs the final SQL query dynamically based on the filters."""
         
         selected_fields = self.parsed_data.get("fields", [])
-        select_clauses = [f'"{field}"' for field in selected_fields] if selected_fields else []
-
+        select_clauses = [
+            field if (field.startswith('"') and field.endswith('"')) or field == "*" else f'"{field}"'
+            for field in selected_fields
+        ]
+        
         group_by_clause = ""
         order_by_clause = ""
         limit_clause = ""
@@ -72,11 +79,15 @@ class SQLPostProcessor:
 
         final_query = f"SELECT {', '.join(select_clauses)} FROM {self.table_name} {group_by_clause} {order_by_clause} {limit_clause}"
 
-        print("Filters Query: ", final_query.strip())
+        print("\nPost Processing Query: ", final_query.strip())
         return final_query.strip()
 
     def execute(self):
         """Executes the constructed SQL query on DuckDB and returns results."""
+        
+        print("\nPost Processing Data: ", self.parsed_data)
+        
         final_query = self.construct_query()
         df = self.con.execute(final_query).fetchdf()
+        
         return df

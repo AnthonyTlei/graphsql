@@ -34,7 +34,7 @@ class GraphSQLCursor:
             raise Exception("Cursor is closed.")
         
         parsed_url = urlparse(self.endpoint)
-        cleaned_endpoint = parsed_url.netloc + parsed_url.path if parsed_url.scheme in ["http", "https", "graphsql"] else self.endpoint
+        cleaned_endpoint = parsed_url.netloc if parsed_url.scheme in ["http", "https", "graphsql"] else self.endpoint
         endpoint_hash = hashlib.md5(cleaned_endpoint.encode()).hexdigest()[:10]
         mappings_path = f"schemas/mappings_{endpoint_hash}.json"
         relations_path = f"schemas/relations_{endpoint_hash}.json"
@@ -58,7 +58,11 @@ class GraphSQLCursor:
         else:
             json_files_path = DataFetch(self.endpoint).fetch_data(graphql_queries)
 
-        table_name = parsed_data.get("subquery_alias", "virtual_table")
+        table_name = (
+            parsed_data.get("subquery_alias")
+            or parsed_data.get("table")
+            or "virtual_table"
+        )
         JSONToTabular(output_format="duckdb", depth_cutoff=5, table_name=table_name).convert(json_paths=json_files_path)
 
         sql_post_processor = SQLPostProcessor(parsed_data)

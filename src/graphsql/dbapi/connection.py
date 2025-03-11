@@ -32,7 +32,7 @@ class GraphSQLConnection:
 
         parsed_url = urlparse(self.endpoint)
         if parsed_url.scheme in ["http", "https", "graphsql"]:
-            cleaned_endpoint = parsed_url.netloc + parsed_url.path
+            cleaned_endpoint = parsed_url.netloc
         else:
             cleaned_endpoint = self.endpoint
         

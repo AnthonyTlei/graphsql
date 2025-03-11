@@ -28,10 +28,13 @@ class GraphQLIntrospection:
         """
         parsed_url = urlparse(self.endpoint)
         if parsed_url.scheme in ["http", "https", "graphsql"]:
-            self.cleaned_endpoint = parsed_url.netloc + parsed_url.path
+            self.cleaned_endpoint = parsed_url.netloc
         else:
             self.cleaned_endpoint = self.endpoint
         endpoint_hash = hashlib.md5(self.cleaned_endpoint.encode()).hexdigest()[:10]
+        print("Introspection: ")
+        print(" Cleaned Endpoint: ", self.cleaned_endpoint)
+        print(" Endpoint Hash: ", endpoint_hash)
         return f"schema_{endpoint_hash}.json"
 
     def fetch_schema(self):

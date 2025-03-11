@@ -587,6 +587,7 @@ class SQLParser:
             "graphql_queries": result_queries,
             "filters": filters_data,
             "fields": sql_data['fields'],
+            "table": sql_data['table'],
             "subquery_filters": subquery_filters_data,
             "subquery_alias": alias
         }
