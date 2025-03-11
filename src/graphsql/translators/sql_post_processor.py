@@ -29,12 +29,14 @@ class SQLPostProcessor:
         if "*" in selected_fields:
             select_clauses = ["*"]
         else:
-            select_clauses = [
-            field 
-            if (field.startswith('"') and field.endswith('"')) or field == "*" 
-            else f'"{field}"'
-            for field in selected_fields
-        ]
+            select_clauses = []
+            for field in selected_fields:
+                if field in select_clauses:
+                    continue
+                if "." in field:
+                    select_clauses.append(f'"{field}"')
+                else:
+                    select_clauses.append(field)
         
         group_by_clause = ""
         order_by_clause = ""
@@ -44,6 +46,10 @@ class SQLPostProcessor:
         print(" Select Clauses: ", select_clauses)
 
         if self.filters.get("aggregations"):
+            for agg, field in self.filters["aggregations"]:
+                if field in select_clauses:
+                    select_clauses.remove(field)
+                
             agg_clauses = [f'{agg}("{col}") AS {agg.lower()}_{col.replace(".", "_")}' for agg, col in self.filters["aggregations"]]
             select_clauses.extend(agg_clauses)
 
