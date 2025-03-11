@@ -64,13 +64,13 @@ class GraphSQLCursor:
             or "virtual_table"
         )
         JSONToTabular(output_format="duckdb", depth_cutoff=5, table_name=table_name).convert(json_paths=json_files_path)
+        self._load_results(table_name=table_name)
 
         sql_post_processor = SQLPostProcessor(parsed_data)
         result_df = sql_post_processor.execute()
 
         self._results = result_df.to_records(index=False)
         self._description = [(col, None) for col in result_df.columns]
-        # self._load_results("virtual_table")
 
         print("\n✅ Final Processed Results (Columns):", result_df.columns)
         print(result_df.head())

@@ -376,9 +376,11 @@ class SQLParser:
             if table in self.mappings:
                 for field, _type in self.mappings[table].items():
                     parsed_fields[field] = True
-            return parsed_fields
+            # return parsed_fields
 
         for field in fields:
+            if field == "*":
+                continue
             parts = field.split(".")
             parent = parts[0]
             if len(parts) == 1:

@@ -244,6 +244,9 @@ class GraphSQLDialect(DefaultDialect):
         endpoint = f"{scheme}://{url.host}"
         if url.port:
             endpoint += f":{url.port}"
+            
+        if url.database:
+            endpoint += f"/{url.database}"
 
         headers = {}
         for key, value in url.query.items():
@@ -252,6 +255,9 @@ class GraphSQLDialect(DefaultDialect):
 
         if "auth" in url.query:
             headers["Authorization"] = url.query["auth"]
+            
+        print("Url: ", url)
+        print("Endpoint: ", endpoint)
 
         return (endpoint,), {"headers": headers}
 

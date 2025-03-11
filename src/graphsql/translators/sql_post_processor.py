@@ -26,14 +26,22 @@ class SQLPostProcessor:
         """Constructs the final SQL query dynamically based on the filters."""
         
         selected_fields = self.parsed_data.get("fields", [])
-        select_clauses = [
-            field if (field.startswith('"') and field.endswith('"')) or field == "*" else f'"{field}"'
+        if "*" in selected_fields:
+            select_clauses = ["*"]
+        else:
+            select_clauses = [
+            field 
+            if (field.startswith('"') and field.endswith('"')) or field == "*" 
+            else f'"{field}"'
             for field in selected_fields
         ]
         
         group_by_clause = ""
         order_by_clause = ""
         limit_clause = ""
+        
+        print(" Select Fields: ", selected_fields)
+        print(" Select Clauses: ", select_clauses)
 
         if self.filters.get("aggregations"):
             agg_clauses = [f'{agg}("{col}") AS {agg.lower()}_{col.replace(".", "_")}' for agg, col in self.filters["aggregations"]]
