@@ -4,7 +4,7 @@ import sqlparse
 from sqlparse.sql import IdentifierList, Identifier, Parenthesis, Token, Function
 from sqlparse.tokens import DML, Keyword, Wildcard, Whitespace, Punctuation
 
-AGGREGATION_FUNCTIONS = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
+AGGREGATION_FUNCTIONS = {"COUNT", "COUNT_DISTINCT", "SUM", "AVG", "MIN", "MAX"}
 class SQLParser:
     def __init__(self, mappings_path="schemas/mappings.json", relations_path="schemas/relations.json"):
         """Initialize SQL to GraphQL converter with mappings & relations JSON files."""
