@@ -38,8 +38,6 @@ class SQLPostProcessor:
                 else:
                     select_clauses.append(field)
                     
-        print(" Select Clauses First: ", select_clauses)
-        
         group_by_clause = ""
         order_by_clause = ""
         limit_clause = ""
@@ -83,7 +81,10 @@ class SQLPostProcessor:
                     agg_func, field_name = match.groups()
                     parsed_group_by_columns.append(f'{agg_func}("{field_name}")')
                 else:
-                    parsed_group_by_columns.append(f'"{col}"')
+                    if not (col.startswith('"') and col.endswith('"')):
+                        parsed_group_by_columns.append(f'"{col}"')
+                    else:
+                        parsed_group_by_columns.append(f'{col}')
 
             group_by_clause = f"GROUP BY {', '.join(parsed_group_by_columns)}"
 
@@ -114,10 +115,6 @@ class SQLPostProcessor:
         if self.filters.get("limit"):
             limit_clause = f"LIMIT {self.filters['limit']}"
 
-
-        print(" Select Fields: ", selected_fields)
-        print(" Select Clauses Final: ", select_clauses)
-        
         final_query = f"SELECT {', '.join(select_clauses)} FROM {self.table_name} {group_by_clause} {order_by_clause} {limit_clause}"
 
         print("\nPost Processing Query: ", final_query.strip())
